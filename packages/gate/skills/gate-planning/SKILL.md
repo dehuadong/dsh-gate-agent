@@ -1,11 +1,15 @@
 ---
 name: gate-planning
-description: Gate 派发的 planning worker；保留原 planning 工作项、合同、技术决定与修正方法，Plan Review 交给独立 worker。
+description: Gate 规划方法：主 agent 读取后提炼任务并派发；worker 不加载技能。
 ---
 
-# Planning
+## 主 agent 使用
 
-## Project binding
+主 agent 在派发前自行读取本方法，给 worker 一份自包含任务：具体工作项、约束和规划规则。worker 不应加载本技能或其他 gate 方法文件。
+
+# 规划
+
+## 项目绑定
 
 - 本次工作项就是 proposed Agent Note；
 - 产品行为、范围、验收由工作项拥有；
@@ -72,3 +76,4 @@ Planning 完成需要同时满足：
 - 主代理报告 Plan Review 无未解决发现（不由本 worker 自行宣称）。
 
 若用户只要求规划，交付规划结果与评审证据后结束。端到端任务把 receipt 交回 gate；执行授权由 gate 单独核对，不在本 worker 内推进。
+

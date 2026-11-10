@@ -65,30 +65,47 @@ discuss 是默认阶段，不需要命令进入。
 6. 汇报：已解决事项、剩余未决事项、建议的下一阶段。
 7. 不自行离开 discuss；离开必须由用户显式授权。`
 
-export const PLAN_ORCHESTRATION = `## /gate-enter-plan orchestration
-Main agent dispatches workers; gate does not dispatch.
-1. Read the method files listed below yourself before dispatch. Do not ask the worker to load gate skills or method files; pass a self-contained task brief plus the relevant method rules.
-2. Dispatch gate-planning with the work item, constraints, and the distilled planning method. The worker must not re-load gate skills.
-3. Call gate_record({node:'plan', task, workerSessionIds}). The task is the work item or topic produced by planning; it is required. workerSessionIds are the child session ids returned by the dispatched subagent; no worker evidence means no advance.
-4. At plan-review, read the listed gate-plan-review method yourself; dispatch one read-only plan-review worker with the method and Note. Call gate_record({node:'plan-review',findings,reviewAxes,workerSessionIds,requiresDiscussion}); reviewAxes must include both standards and spec.
-5. If requiresDiscussion: call gate_record for the current node with requiresDiscussion:true and stop; the gate becomes blocked and the user must run /gate-resume after deciding. If findings remain: read the planning method again, dispatch gate-planning revise with the findings and method, call gate_record({node:'plan-revise',workerSessionIds}), then review again.
-6. At the configured review limit with findings, gate marks blocked; never claim pass.
-7. Empty review returns to discuss.`
+export const PLAN_ORCHESTRATION = `## /gate-enter-plan 编排
+主代理派 worker；gate 不派。
 
-export const IMPLEMENT_ORCHESTRATION = `## /gate-enter-implement orchestration
-Main agent dispatches workers; gate does not dispatch.
-1. Read the method files listed below yourself before dispatch. Do not ask workers to load gate skills or method files; pass each worker a self-contained task brief plus the relevant method rules.
-2. Dispatch gate-implement with the accepted work item and distilled implementation method. The worker must not re-load gate skills.
-3. Call gate_record({node:'implement',workerSessionIds}).
-4. Read the gate-code-review method yourself; dispatch ONE read-only review worker that covers both Standards and Spec axes. The worker must not load gate skills.
-5. Call gate_record({node:'code-review',findings,reviewAxes,workerSessionIds,requiresDiscussion}) with the two-axis result from that one worker.
-6. If requiresDiscussion: call gate_record for the current node with requiresDiscussion:true and stop; the gate becomes blocked and the user must run /gate-resume. If findings remain: read the implementation method again, dispatch gate-implement revise with the findings and method, call gate_record({node:'implement-revise',workerSessionIds}), then review again.
-7. Empty findings: read the gate-verify method yourself; dispatch the verify worker with the method. Call gate_record({node:'verify',verification,workerSessionIds}); verification must include commands, evidence, toolResults, and passed.
-8. Verify FAIL routes back to implement-revise; PASS completes. At the configured review limit, blocked.`
+## Step 1 — Planning
+主 agent 加载技能 gate-planning；需要写 Note 时同时加载 write-agent-notes。
+把工作项、约束和提炼后的规划方法写进 subagent prompt；planning worker 不加载 gate 技能。
+完成后调 gate_record({node:'plan', task, workerSessionIds})。
 
-export const DOCS_ORCHESTRATION = `## /gate-docs orchestration
-Edit only documents and notes; no code.
-When done, call gate_record({node:'docs'}) to return to discuss.`
+## Step 2 — Plan Review
+主 agent 加载技能 gate-plan-review，派一个只读 review worker；给它任务、Note 和评审方法。
+完成后调 gate_record({node:'plan-review',findings,reviewAxes,workerSessionIds,requiresDiscussion})。
+reviewAxes 必须包含 standards 与 spec 两轴。
+需要用户决定：进入 blocked，等待 /gate-resume；仍有 findings：重新加载 gate-planning，派 revise，再 review。
+
+## Step 3 — 回到 Discuss
+review 为空时回到 discuss，planReady=true。
+实施需要用户另行执行 /gate-enter-implement；不要在 planning 里开始实现。`
+
+export const IMPLEMENT_ORCHESTRATION = `## /gate-enter-implement 编排
+主代理派 worker；gate 不派。
+
+## Step 1 — Implement
+主 agent 加载技能 gate-implement；采用测试优先时同时加载 tdd，并把相关规则交给 implement worker。
+worker 不加载 gate 技能。
+完成后调 gate_record({node:'implement', workerSessionIds})。
+
+## Step 2 — Implementation Review
+主 agent 加载技能 gate-code-review，派一个只读 review worker，同时覆盖 Standards 与 Spec 两轴。
+完成后调 gate_record({node:'code-review', findings, reviewAxes, workerSessionIds})。
+审查要求满足后继续 Step 3，无需再次授权。
+实现中发现范围外问题、合同变化或需要重新讨论时，worker 停止并返回 receipt；主 agent 向用户说明，使用 gate_record 的 requiresDiscussion 或提示用户执行 /gate-return-discuss。不要停在 implement 里继续扩大范围。
+
+## Step 3 — Verify
+主 agent 加载技能 gate-verify，派 verify worker 完成最终验收。
+完成后调 gate_record({node:'verify', verification, workerSessionIds})。
+只有最终 PASS 才完成交付；FAIL 回到 implement-revise。
+状态更新遵循项目登记的工作项与决策记录生命周期。`
+
+export const DOCS_ORCHESTRATION = `## /gate-docs 编排
+只改文档和 notes，不改代码。
+完成后调 gate_record({node:'docs'}) 回到 discuss。`
 
 function readSkill(name) {
   const file = path.join(SKILLS, name, 'SKILL.md')
@@ -128,41 +145,22 @@ function resolveNotesSkill(gate) {
   return undefined
 }
 
-function methodFiles(node, gate) {
-  const files = []
-  if (node === 'plan' || node === 'plan-revise') {
-    files.push(path.join(SKILLS, 'gate-planning', 'SKILL.md'))
-    files.push(path.join(SKILLS, 'gate-planning', 'proposal.md'))
-    files.push(path.join(SKILLS, 'gate-planning', 'rfc.md'))
-    const notes = resolveNotesSkill(gate)
-    if (notes !== undefined) {
-      files.push(notes.skill)
-      if (notes.template !== undefined) files.push(notes.template)
-    }
-  }
-  if (node === 'plan-review') files.push(path.join(SKILLS, 'gate-plan-review', 'SKILL.md'))
-  if (node === 'implement' || node === 'implement-revise' || node === 'code-review') {
-    files.push(path.join(SKILLS, 'gate-implement', 'SKILL.md'))
-    files.push(path.join(SKILLS, 'gate-implement', 'tickets.md'))
-    files.push(path.join(SKILLS, 'gate-code-review', 'SKILL.md'))
-    files.push(path.join(SKILLS, 'gate-verify', 'SKILL.md'))
-  }
-  if (node === 'verify') files.push(path.join(SKILLS, 'gate-verify', 'SKILL.md'))
-  if (node === 'review') files.push(path.join(SKILLS, 'gate-code-review', 'SKILL.md'))
-  return files.filter(file => existsSync(file))
-}
-
-function workerFiles() {
-  return []
+function phaseMethod(node) {
+  if (node === 'plan' || node === 'plan-revise') return '`gate-planning` + `write-agent-notes`'
+  if (node === 'plan-review') return '`gate-plan-review`'
+  if (node === 'implement' || node === 'implement-revise') return '`gate-implement`'
+  if (node === 'code-review' || node === 'review') return '`gate-code-review` (one skill, both axes)'
+  if (node === 'verify') return '`gate-verify`'
+  return '无'
 }
 
 function workerProtocol(node) {
   return [
     '## Gate worker',
-    'You are the gate-dispatched worker for this node. Execute only this node; do not call gate_record and do not advance the gate.',
-    'The main agent has already read the gate method files and must give you the concrete task plus the relevant method rules. Do not load gate skills or gate method files yourself.',
+    '你是 gate 为该节点派发的 worker。只执行该节点；不要调用 gate_record，不要推进 gate。',
+    '主代理已经加载所需 gate 技能，并把具体任务与相关方法要求交给你。不要自己加载 gate 技能。',
     node === 'plan' || node === 'plan-revise'
-      ? 'Use gate_note_write to create or update proposed Agent Notes under .agents/notes/proposed. Generic write/edit/shell are restricted in planning.'
+      ? '用 gate_note_write 在 .agents/notes/proposed 下创建或更新 proposed Agent Note；planning 中通用 write/edit/shell 被限制。'
       : '',
   ].filter(Boolean).join('\n\n')
 }
@@ -699,8 +697,14 @@ export function apply(ctx, config = {}) {
             : implementNodes.has(state.node)
               ? IMPLEMENT_ORCHESTRATION
               : ''
-        const files = effective.worker ? workerFiles(state.node, gate) : methodFiles(state.node, gate)
-        return [`## Gate`, statusText(state, reviewLimit), phaseNote, protocol, files.length === 0 ? '' : `## Method files\n${files.join('\n')}`].filter(Boolean).join('\n\n')
+        const method = phaseMethod(state.node)
+        const phaseMethodText = effective.worker || method === '无'
+          ? ''
+          : `## 阶段方法\n当前节点：${state.node ?? '无'}。每次派发前加载：${method}。`
+        const dispatchRule = effective.worker || method === '无'
+          ? ''
+          : `## 派发规则\n每次派 subagent 前，加载“阶段方法”中为节点 ${state.node ?? '无'} 指定的技能；不要使用其他阶段的方法，不要依赖之前的加载或记忆，多轮/压缩后必须重新加载。`
+        return [`## Gate`, statusText(state, reviewLimit), phaseNote, protocol, phaseMethodText, dispatchRule].filter(Boolean).join('\n\n')
       },
     })
   })
@@ -736,7 +740,7 @@ export function apply(ctx, config = {}) {
       ...(input === null ? {} : { input }),
       handler,
     })
-    register('gate-init', 'Initialize the gate marker for this project', async invocation => {
+    register('gate-init', '初始化当前项目的 Gate marker', async invocation => {
       const workspace = sessionWorkingDirectory(ctx, invocation.agent)
       if (workspace === undefined) return { kind: 'error', text: '无法确定当前会话工作区' }
       const existing = findGateRoot(workspace)
@@ -763,21 +767,21 @@ export function apply(ctx, config = {}) {
       wakeGateAgent(invocation, `Gate 已启用：${marker}（phase=discuss）。向用户汇报初始化结果，并说明下一步可执行 /gate-enter-plan。`, 'gate-init')
       return { kind: 'success', text: `已启用 Gate：${marker}（phase=discuss）` }
     }, null)
-    register('gate-enter-plan', 'Enter planning for the current discussion', async invocation => {
+    register('gate-enter-plan', '为当前讨论进入 planning', async invocation => {
       const result = enterPhase(ctx, invocation.agent, 'plan', reviewLimit, store)
       if (result.kind === 'error') return result
       const brief = String(invocation.rawInput ?? '').trim()
       wakeGateAgent(invocation, `Gate 已进入 plan。用户规划输入：${brief === '' ? '（未提供额外输入）' : brief}。按 Gate 编排协议立即派发 gate-planning worker，规划必须覆盖该输入；完成后用 gate_record({node:"plan", ...}) 带 workerSessionIds 推进。`, 'gate-enter-plan')
       return { kind: 'success', text: '进入 planning：工作项将在规划中确定。\n按注入协议派发 gate-planning。' }
     }, { hint: '<需求/约束>' })
-    register('gate-enter-implement', 'Enter implementation for the planned work item', async invocation => {
+    register('gate-enter-implement', '为已规划工作项进入 implementation', async invocation => {
       const result = enterPhase(ctx, invocation.agent, 'implement', reviewLimit, store)
       if (result.kind === 'error') return result
       const brief = String(invocation.rawInput ?? '').trim()
       wakeGateAgent(invocation, `Gate 已进入 implement：${result.state.task ?? ''}。用户实施约束：${brief === '' ? '（无额外约束）' : brief}。按 Gate 编排协议立即派发 gate-implement worker，完成后用 gate_record 推进。`, 'gate-enter-implement')
       return { kind: 'success', text: `进入 implement：${result.state.task}\n按注入协议派发 gate-implement。` }
     }, { hint: '[实施约束]' })
-    register('gate-docs', 'Start docs governance', async invocation => {
+    register('gate-docs', '开始文档治理', async invocation => {
       const task = String(invocation.rawInput ?? '').trim()
       if (task === '') return { kind: 'error', text: '缺少范围' }
       const gate = resolveGate(ctx, invocation.agent)
@@ -791,7 +795,7 @@ export function apply(ctx, config = {}) {
       wakeGateAgent(invocation, `Gate 已进入 docs：${task}。按 docs 协议只改文档/notes；完成后 gate_record({node:"docs"})。`, 'gate-docs')
       return { kind: 'success', text: `进入 docs：${task}` }
     })
-    register('gate-code-review', 'Start a standalone read-only code review', async invocation => {
+    register('gate-code-review', '开始独立只读 code review', async invocation => {
       const task = String(invocation.rawInput ?? '').trim()
       if (task === '') return { kind: 'error', text: '缺少审查范围' }
       const gate = resolveGate(ctx, invocation.agent)
@@ -802,10 +806,10 @@ export function apply(ctx, config = {}) {
       if (state.work === 'blocked' || state.blockReason !== null) return { kind: 'error', text: `当前被 blocked：${state.blockReason ?? 'unknown'}；先 /gate-resume` }
       state.phase = 'reviewing'; state.task = task; state.node = 'review'; state.work = 'active'; state.blockReason = null; state.blockedFrom = null
       store.write(gate.root, invocation.agent, state)
-      wakeGateAgent(invocation, `Gate 已进入只读 code review：${task}。主 agent 读取 gate-code-review 方法后派一个 review worker，同时覆盖 standards 与 spec 两轴；完成后 gate_record({node:"review", reviewAxes, workerSessionIds})。`, 'gate-code-review')
-      return { kind: 'success', text: `进入只读 code review：${task}\n主代理读取 gate-code-review 方法并派一个两轴 review worker。` }
+      wakeGateAgent(invocation, `Gate 已进入只读 code review：${task}。主 agent 先加载技能 gate-code-review，再派一个 review worker 同时覆盖 standards 与 spec 两轴；完成后 gate_record({node:"review", reviewAxes, workerSessionIds})。`, 'gate-code-review')
+      return { kind: 'success', text: `进入只读 code review：${task}\n主代理加载技能 gate-code-review 并派一个两轴 review worker。` }
     })
-    register('gate-block', 'Block the current gate', async invocation => {
+    register('gate-block', '冻结当前 gate', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
       if (gate.config.kind === 'invalid') return { kind: 'error', text: `Gate 配置无效：${gate.config.reason ?? 'unknown'}` }
       if (gate.config.kind !== 'ok') return { kind: 'error', text: '当前项目没有启用的 .agents/gate.json' }
@@ -817,7 +821,7 @@ export function apply(ctx, config = {}) {
       store.write(gate.root, invocation.agent, state)
       return { kind: 'success', text: `已 block：${state.blockReason}` }
     }, { hint: '[原因]' })
-    register('gate-resume', 'Resume a blocked gate', async invocation => {
+    register('gate-resume', '恢复 blocked 的 gate', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
       if (gate.config.kind === 'invalid') return { kind: 'error', text: `Gate 配置无效：${gate.config.reason ?? 'unknown'}` }
       if (gate.config.kind !== 'ok') return { kind: 'error', text: '当前项目没有启用的 .agents/gate.json' }
@@ -832,7 +836,7 @@ export function apply(ctx, config = {}) {
       }
       return { kind: 'success', text: `已恢复到 ${state.phase}${state.node === null ? '' : ` / ${state.node}`}` }
     }, null)
-    register('gate-return-discuss', 'Return to discuss', async invocation => {
+    register('gate-return-discuss', '回到 discuss', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
       if (gate.config.kind === 'invalid') return { kind: 'error', text: `Gate 配置无效：${gate.config.reason ?? 'unknown'}` }
       if (gate.config.kind !== 'ok') return { kind: 'error', text: '当前项目没有启用的 .agents/gate.json' }
@@ -842,7 +846,7 @@ export function apply(ctx, config = {}) {
       store.write(gate.root, invocation.agent, state)
       return { kind: 'success', text: '已回到 discuss' }
     }, null)
-    register('gate-status', 'Show current gate state', async invocation => {
+    register('gate-status', '查看当前 gate 状态', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
       if (gate.config.kind === 'none') return { kind: 'error', text: '当前项目没有 .agents/gate.json' }
       if (gate.config.kind === 'disabled') return { kind: 'success', text: `状态：disabled（enabled:false）\n配置：${gate.config.configPath}` }
@@ -853,7 +857,7 @@ export function apply(ctx, config = {}) {
 
   ctx.tools.register({
     name: 'gate_record',
-    description: 'Record the result of one root-agent-dispatched phase worker (plan, plan-review, plan-revise, implement, code-review, implement-revise, verify, docs, review) and advance the gate state. Requires workerSessionIds for worker nodes, both review axes for review nodes, and toolResults for verify. Root agent only.',
+    description: '记录 root agent 派发的节点 worker 结果并推进 gate 状态。worker 节点要求 workerSessionIds；review 节点要求两轴结果；verify 要求 toolResults。仅 root agent 可调用。',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -1014,12 +1018,12 @@ export function apply(ctx, config = {}) {
 
   ctx.tools.register({
     name: 'gate_note_write',
-    description: 'Write a proposed Agent Note under .agents/notes/proposed. Planning workers only; generic write/edit/shell are restricted.',
+    description: '在 .agents/notes/proposed 下写 proposed Agent Note。仅 planning worker 使用；通用 write/edit/shell 被限制。',
     parameters: {
       type: 'object',
       additionalProperties: false,
       properties: {
-        path: { type: 'string', description: 'Path relative to .agents/notes/proposed, ending in .md.' },
+        path: { type: 'string', description: '相对 .agents/notes/proposed 的路径，必须以 .md 结尾。' },
         content: { type: 'string' },
       },
       required: ['path', 'content'],
@@ -1050,4 +1054,6 @@ export function apply(ctx, config = {}) {
     },
   })
 }
+
+
 

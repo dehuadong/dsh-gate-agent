@@ -183,7 +183,17 @@ gate-code-review
 gate-verify
 ```
 
-主代理先读取方法文件，按当前任务提炼方法要求后写进 subagent prompt；worker 不再加载 gate 技能或方法文件。code review 只有一个 `gate-code-review` 技能，由一个 review worker 同时覆盖 Standards 与 Spec 两轴。
+主代理在**每次派 worker 前**加载当前节点对应的技能，不依赖之前的加载或记忆（多轮/压缩后尤其如此），再把任务和提炼后的方法要求写进 subagent prompt；worker 不再加载 gate 技能或方法文件。code review 只有一个 `gate-code-review` 技能，由一个 review worker 同时覆盖 Standards 与 Spec 两轴。
+
+| 当前 node | 主 agent 加载的技能 |
+|---|---|
+| `plan` / `plan-revise` | `gate-planning` + `write-agent-notes` |
+| `plan-review` | `gate-plan-review` |
+| `implement` / `implement-revise` | `gate-implement` |
+| `code-review` | `gate-code-review`（单技能，含 Standards + Spec 两轴） |
+| `verify` | `gate-verify` |
+| `review` | `gate-code-review` |
+| `discuss` / `docs` | 无 |
 
 ## Marker 与迁移
 
@@ -204,3 +214,4 @@ gate-verify
 - verify 的 `toolResults` 会用 `sessionQuery.readSession` 在 worker session log 中绑定到真实 `tool/result` callId；`commands`/`evidence` 仍是主代理转述，不能当成完整独立执行证明。
 - `ctx.tools.restrict` 只掩全局工具；scoped 写工具仍可能出现在工具面，硬拒绝由 `ctx.tools.guard` 保证。
 - 旧 gate 迁移仍属后续 B 工作项；session projection、guard/restrict/sandbox、worker tree 证据与 review axes 已在 T1/T2/T3 实现。
+

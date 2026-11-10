@@ -1,70 +1,75 @@
 ---
 name: gate-implement
-description: Gate 派发的实现 worker；只负责授权范围、测试、findings 修正与 receipt。
+description: Gate 实现方法：主 agent 读取后提炼任务并派发；worker 不加载技能。
 ---
 
-# Implement
+## Main agent use
 
-## 1. Entry conditions
+主 agent 在派发前自行读取本方法，给 worker 一份自包含任务：已接受的范围、约束、验收检查和实现规则。worker 不应加载本技能或其他 gate 方法文件。
 
-Implement the selected scope of the work item (proposed Agent Note). Read its scope, acceptance criteria, and referenced design sections before coding.
+# 实现
 
-Before implementation, check the scope and acceptance conditions, required decisions and approval evidence, unresolved blockers, and execution authorization for that scope under project rules. Reuse valid evidence without requesting confirmation again. Sync already agreed scope and decisions to their existing owners; route unresolved material decisions through the project's discussion, authorization, and gate rules before returning to discuss. Document status or location alone does not establish readiness or authorization.
+## 1. 入口条件
 
-## 2. Decompose when needed
+实现已接受工作项（proposed Agent Note）的选定范围。编码前读取其范围、验收条件与引用的设计章节。
 
-After the Implementation Gate passes, create implementation tickets only when decomposition is needed. Their existence is not a condition for initially entering implementation.
+实现前检查范围、验收条件、必需决定、批准证据、未解决 blocker，以及该范围的执行授权。复用有效证据，不重复确认。把已确认的范围和决定同步给各自属主；未解决的重要决定按项目的讨论、授权和 gate 规则返回 discuss。仅记录状态或位置不构成就绪或授权。
 
-Implement directly when the work fits one coherent execution unit.
+## 2. 按需拆分
 
-Read `tickets.md` when the work is too large or has meaningful independent slices or dependencies.
+通过 Implementation Gate 后，只在确实需要拆分时创建 implementation ticket。ticket 的存在不是进入实现的前提。
 
-Do not create tickets merely to enumerate coding steps.
+工作适合一个连贯执行单元时直接实现。
 
-## 3. Execute
+工作过大、存在有意义的独立切片或依赖时，读取 `tickets.md`。
 
-Implement against the selected work item's scope, acceptance conditions, referenced requirements, accepted designs and architectural decisions.
+不要为了枚举编码步骤而创建 ticket。
 
-Use established architecture, conventions, interfaces, and domain language unless the authoritative design explicitly changes them.
+## 3. 执行
 
-If implementation exposes a material unresolved product, domain, architectural, interface, compatibility, or other contract decision, stop affected implementation and call `gate_record({node:'implement', requiresDiscussion:true, discussionReason})`. Do not invoke a slash command yourself. If `gate_record` is unavailable or fails, ask the user to enter `/gate-return-discuss`. Discuss the decision before any new planning or implementation authorization; do not continue the affected code.
+按工作项的范围、验收条件、引用要求、已接受设计和架构决定实现。
 
-### Implementation-time testing
+使用既有架构、约定、接口和领域语言，除非权威设计明确改变。
 
-Write or update tests as appropriate for the change. Use test-first development when it improves feedback or helps establish behavior clearly; when adopting it, load the `tdd` skill and follow its workflow.
+如果实现暴露出未解决的产品、领域、架构、接口、兼容性或其他合同决定，停止受影响实现，并向主 agent 返回 receipt 和该决定。主 agent 调用 `gate_record({node:'implement', requiresDiscussion:true, discussionReason})`；worker 不得调用 `gate_record` 或 slash command。决定未解决前先讨论，不做新的 planning/implement 授权，也不继续受影响代码。
 
-Run focused tests and relevant static checks while working.
+### 实现期测试
 
-## 4. Implementation findings
+按改动需要编写或更新测试。测试优先能改善反馈或明确行为时使用；采用时加载 `tdd` 技能并遵循其流程。
 
-The gate may return material findings. Resolve each finding by ownership:
+工作时运行聚焦测试和相关静态检查。
 
-| Finding                                                           | Route                                  |
-| ----------------------------------------------------------------- | -------------------------------------- |
-| Current implementation is missing or violates the agreed contract | Fix in the current implementation      |
-| Additional execution unit is needed within the same agreed work   | Add or update an implementation ticket |
-| Product or technical contract must change or was never resolved   | Stop affected work, call `gate_record` with `requiresDiscussion:true`, or ask the user for `/gate-return-discuss`; new planning needs authorization |
-| Issue is unrelated to the agreed work                             | Do not expand scope automatically      |
+## 4. 实现 findings
 
-There is no "fix it while we're here" path for unrelated work.
+gate 可能返回实质 findings。按属主处理：
 
-For findings you own, fix them in the current implementation, rerun the affected tests and static checks, and report each finding's disposition in the next receipt. Do not mark a finding resolved without evidence.
+| Finding | 路由 |
+| --- | --- |
+| 当前实现缺失或违反已同意合同 | 在当前实现中修复 |
+| 同一已同意工作需要额外执行单元 | 增加或更新 implementation ticket |
+| 产品或技术合同必须改变或从未解决 | 停止受影响工作，把决定 blocker 返回主 agent；主 agent 调 `gate_record` 带 `requiresDiscussion:true`；新 planning 需要授权 |
+| 与已同意工作无关 | 不自动扩大范围 |
 
-## 5. Receipt and handoff
+没有“顺手修一下”的无关工作路径。
 
-Implementation is complete when:
+对属于本实现的 findings，在当前实现中修复，重跑受影响测试和静态检查，并在下一次 receipt 报告每项处置。没有证据不要标记已解决。
 
-- the authorized scope is implemented
-- required tickets are complete
-- relevant implementation-time checks pass
-- material implementation findings are resolved or explicitly reported as blocked
-- the change is ready for verification
+## 5. Receipt 与交接
 
-Return a receipt with:
+实现完成的条件：
 
-- changed files and scope covered
-- tests and static checks run, with results
-- each finding's disposition
-- remaining risks, blockers, or decisions needed
+- 授权范围已实现
+- 必需 ticket 已完成
+- 相关实现期检查通过
+- 实质 findings 已解决或明确报告为 blocked
+- 改动已准备好进入 verify
 
-Do not verify the delivery, mark the work item complete, or advance the gate. The gate owns the verify node and final completion.
+返回 receipt，包含：
+
+- 改动文件与覆盖范围
+- 运行的测试和静态检查及结果
+- 每项 finding 的处置
+- 剩余风险、blocker 或需要决定的点
+
+不要执行 verify、不要把工作项标完成、不要推进 gate。verify 节点和最终完成由 gate 负责。
+

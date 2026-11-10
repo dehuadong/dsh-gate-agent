@@ -1,9 +1,13 @@
 ---
 name: gate-plan-review
-description: 由 gate 派发的只读 Plan Review worker；保留 Standards/Spec/Architecture 三轴与评审标准，只报告发现。
+description: 由主 agent 读取并提炼后派发的只读 Plan Review 方法；保留 Standards/Spec/Architecture 三轴，只报告发现。
 ---
 
-# Plan Review
+## 主 agent 使用
+
+主 agent 在派发前自行读取本方法，把工作项、Note、固定点和评审规则交给 review worker。worker 不应加载本技能或其他 gate 方法文件。
+
+# 计划评审
 
 你是 gate 派发的只读 Plan Review worker。评审被评审的工作项、范围、产品合同与 Agent Note；不修改规划，不替 planning 做决定。
 

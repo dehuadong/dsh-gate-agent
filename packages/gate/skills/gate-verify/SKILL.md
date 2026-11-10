@@ -1,58 +1,62 @@
 ---
 name: gate-verify
-description: Gate 派发的验收 worker；按工作项验收条件运行检查并报告 PASS/FAIL，不修复。
+description: Gate 验收方法：主 agent 读取后提炼并派发；worker 不加载技能。
 ---
 
-# Verify
+## Main agent use
 
-Complete the engineering workflow by establishing that the authorized work satisfies its authoritative contract. Verification includes in-scope correction and re-verification under the existing execution authorization.
+主 agent 在派发前自行读取本方法，给 verify worker：工作项、验收条件、受保护基线和验证规则。worker 不应加载本技能或其他 gate 方法文件。
 
-## 1. Establish the acceptance contract and coverage
+# 验收
 
-Resolve the governing work item and its approved requirements, acceptance conditions, design constraints, and compatibility expectations. Implementation is the subject of verification, not the source of expected behavior. Keep verification within the agreed contract.
+用证据确认授权工作满足其权威合同，完成工程闭环。验收包含授权范围内的修正与再验证。
 
-For every required acceptance condition, choose the highest stable boundary that demonstrates it, such as user-visible behavior, a public API or CLI, or an integration or domain boundary. Use the smallest sufficient check; lower-level tests, builds, and static checks can support evidence where appropriate.
+## 1. 建立验收合同与覆盖
 
-Reuse existing checks when they demonstrate the contract. Passing tests, CI, or code review alone does not establish acceptance; do not run checks merely because they exist.
+确定工作项及其批准要求、验收条件、设计约束和兼容性预期。验收对象是实现，不能把实现当作期望行为的来源。验证保持在已同意合同内。
 
-## 2. Execute verification
+对每个必需验收条件，选择能证明它的最高稳定边界，例如用户可见行为、公开 API/CLI、集成或领域边界。使用最小充分检查；更低层测试、构建和静态检查可在适当处支持证据。
 
-Actually exercise the delivered behavior when practical. Track each required condition with its evidence and current result:
+已有检查能证明合同时复用。测试通过、CI 或 code review 本身不等于验收通过；不要因为检查存在就运行。
 
-- **PASS** — evidence demonstrates the required behavior.
-- **FAIL** — observed behavior contradicts the required behavior.
-- **BLOCKED** — ambiguity or insufficient reliable evidence prevents a determination.
+## 2. 执行验证
 
-Absence of observed failure is not evidence of a pass. Continue checking independent conditions after finding a failure or blocker. Check established adjacent behavior when the change may affect it, keeping regression coverage proportional to impact and risk.
+条件允许时实际执行交付行为。逐项记录必需条件、证据和当前结果：
 
-## 3. Diagnose failures and hand them back
+- **PASS**：证据证明必需行为；
+- **FAIL**：观察行为与必需行为矛盾；
+- **BLOCKED**：歧义或可靠证据不足，无法判定。
 
-For each failure, establish the contract expectation, trigger, observed behavior, and supporting evidence. Confirm the cause and owner before changing anything; record an unresolved cause explicitly rather than guessing:
+没有观察到失败不等于 PASS。发现失败或 blocker 后仍继续检查相互独立的条件。改动可能影响既有相邻行为时，按影响和风险比例做回归检查。
 
-- **Implementation defect** — report it for the implement worker; do not fix it here.
-- **Verification defect** — report the incorrect check to the gate; do not edit the check here.
-- **Contract ambiguity or defect** — stop affected verification and report it; the gate returns the contract to planning.
-- **Environment or tooling failure** — report what prevents further verification and whether it is in scope.
-- **Pre-existing failure** — record its acceptance impact and ownership; do not automatically expand the repair scope or disregard a required condition it prevents from passing.
+## 3. 诊断失败并交回
 
-A demonstrated contract violation remains FAIL even when its root cause is unresolved.
+对每个失败，确定合同期望、触发条件、观察行为和支撑证据。改变任何东西前确认原因和属主；未解决原因要明确记录，不能猜：
 
-The gate routes corrections to the owning worker, then runs verification again. Revisit §1 if an authorized contract change alters the acceptance baseline.
+- **实现缺陷**：报告给 implement worker；不要在这里修。
+- **验证缺陷**：把错误检查报告给 gate；不要在这里改检查。
+- **合同歧义或缺陷**：停止受影响验证并报告；gate 把合同退回 planning。
+- **环境或工具失败**：报告什么阻止继续验证，以及是否在范围内。
+- **既有失败**：记录其对验收的影响和属主；不要自动扩大修复范围，也不要忽略它阻止通过的必需条件。
 
-Do not weaken the agreed contract merely to make verification pass.
+已证明的合同违反即使根因未解决也保持 FAIL。
 
-## 4. Final result and completion
+gate 把修正路由给属主 worker，然后再次验证。授权合同变更改变验收基线时，重做 §1。
 
-Lead with the final acceptance result, followed by unresolved failures and blockers prioritized by impact. Then give concise coverage and evidence for every required condition, completed corrections with re-verification evidence, relevant regression results, and material verification gaps or residual risks. A gap that prevents a reliable determination on a required condition must be reflected in that condition's BLOCKED result. A compact table or linked evidence is sufficient; a fixed long template is unnecessary.
+不要为了通过验证而削弱已同意合同。
 
-Report the latest verified state: a corrected condition that passes re-verification is PASS, with its earlier failure summarized as a completed correction. Prioritize unresolved issues by impact and state their contract reference, expected and observed behavior, cause or uncertainty, and required next action.
+## 4. 最终结果与完成
 
-Determine the overall result from the current required conditions:
+先给最终验收结果，再按影响排序未解决失败和 blocker。随后给每个必需条件的简洁覆盖和证据、已完成修正及再验证证据、相关回归结果、实质验证缺口或残余风险。阻止可靠判定的缺口必须反映到对应条件的 BLOCKED。
 
-- **PASS** only when every required condition passes.
-- **FAIL** when any required condition still fails, even if others are blocked.
-- **BLOCKED** when none fail but one or more cannot be reliably verified.
+报告最新已验证状态：修正后通过再验证的条件为 PASS，并把它此前的失败概括为已完成修正。未解决事项按影响排序，写明合同引用、期望与观察行为、原因或不确定性、所需下一步。
 
-### Completion
+按当前必需条件确定总体结果：
 
-Report PASS/FAIL/BLOCKED with evidence. Do not update the work item, transition decision records, or complete the gate; those updates belong to the gate after it accepts this report.
+- **PASS**：每个必需条件都通过；
+- **FAIL**：任一必需条件仍失败，即使其他条件 blocked；
+- **BLOCKED**：没有失败，但一项或多项无法可靠验证。
+
+### 完成
+
+报告 PASS/FAIL/BLOCKED 和证据。不要更新工作项、转换决策记录或完成 gate；这些由 gate 接受报告后处理。
