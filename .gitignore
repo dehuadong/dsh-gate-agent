@@ -1,0 +1,15 @@
+# 本地目录联接（Junction），指向项目外部仓库，不纳入版本控制
+/inkos/
+/deepseek-harness/
+
+# Node 依赖
+/node_modules/
+/packages/*/node_modules/
+
+# 构建产物：装进 profile 的是 lib/，由 build 生成，不入库
+/packages/*/lib/
+
+# shell 守卫固定的临时产物目录（解压的会话日志、隔离测试夹具等）；
+# 位置由插件配置决定，项目侧改不了，这里只负责不入库
+/.artifacts/
+.agents/state/*

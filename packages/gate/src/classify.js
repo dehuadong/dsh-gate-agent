@@ -1,11 +1,6 @@
-/** Pure decisions for the implement gate; the Host plugin owns state and dispatch. */
+/** Pure path and shell-write classification for the gate. */
 
 import path from 'node:path'
-
-/** Normalize a user message before exact gate matching. */
-export function normalizeMessage(value) {
-  return String(value ?? '').replace(/\s+/gu, ' ').trim()
-}
 
 /** Compare paths case-insensitively on Windows/macOS, byte-wise on Linux. */
 export function foldPath(value) {
@@ -17,27 +12,8 @@ export function foldPath(value) {
 export function isWithin(relative, base) {
   const child = foldPath(relative)
   const parent = foldPath(base)
+  if (parent === '') return true
   return child === parent || child.startsWith(`${parent}/`)
-}
-
-/** Match a gate command only from an owner-authored, whole user message. */
-export function gateCommand(message, header, commands) {
-  if (message === undefined || message === null) return undefined
-  if (message.source?.kind !== 'user' || message.source.principal !== undefined) return undefined
-  if (header?.origin === 'subagent') return undefined
-  const text = normalizeMessage((message.content ?? [])
-    .filter(block => block?.type === 'text')
-    .map(block => block.text)
-    .join(''))
-  for (const kind of ['implement', 'planning', 'docs']) {
-    const pattern = commands?.[kind]
-      ?? (kind === 'docs' ? /^批准，执行文档治理\s+(.+)$/u : undefined)
-    if (pattern === undefined) continue
-    const match = pattern.exec(text)
-    if (match === null || match[0] !== text || match[1] === undefined || match[1].trim() === '') continue
-    return { kind, task: match[1].trim() }
-  }
-  return undefined
 }
 
 function isCode(relative, policy) {
@@ -49,30 +25,28 @@ function isCode(relative, policy) {
     : foldPath(relative) === foldPath(entry))
 }
 
-function isProtected(relative, policy) {
-  return policy.protected.some(entry => isWithin(relative, entry))
-}
-
-/** Classify a file target relative to the workspace root. */
-export function classifyPath(root, value, policy) {
-  const absolute = path.resolve(root, String(value ?? ''))
+/** Classify a file target relative to the workspace root and the session cwd. */
+export function classifyPath(root, value, policy, cwd = root) {
+  const absolute = path.resolve(cwd, String(value ?? ''))
   const relative = path.relative(root, absolute).replaceAll('\\', '/')
   const outside = relative === '..' || relative.startsWith('../') || path.isAbsolute(relative)
-  const proposed = !outside && policy.proposed !== undefined && isWithin(relative, policy.proposed)
-  const protectedPath = !outside && isProtected(relative, policy)
+  const protectedPath = !outside && policy.protected.some(entry => isWithin(relative, entry))
+  const protectedAncestor = !outside && policy.protected.some(entry => isWithin(entry, relative))
+  const protectedTarget = protectedPath || protectedAncestor
   const code = !outside && isCode(relative, policy)
   return {
     absolute,
     relative,
     outside,
-    proposed,
     code,
-    protected: protectedPath,
-    docs: !outside && !code && !protectedPath,
+    protected: protectedTarget,
+    protectedAncestor,
+    docs: !outside && !code && !protectedTarget,
   }
 }
 
-const WRITE_VERB = /(?:^|[\s;(])(Set-Content|Add-Content|Out-File|New-Item|Remove-Item|Move-Item|Copy-Item|Rename-Item|Clear-Content|Set-Item|rm|mv|cp|sed\s+-i)\b/iu
+/** Explicit write verbs recognized in one shell statement. */
+const WRITE_VERB = /(?:^|[\s;(])(Set-Content|Add-Content|Out-File|New-Item|Remove-Item|Move-Item|Copy-Item|Rename-Item|Clear-Content|Set-Item|mkdir|md|touch|tee|rm|mv|cp|sed\s+-i)\b/iu
 
 function pathArgs(text) {
   const beforePipe = String(text).split('|')[0]
@@ -101,6 +75,17 @@ function redirectionTargets(text) {
     .map(match => match[1] ?? match[2] ?? match[3])
 }
 
+/** Files named by a write command after a pipe (`... | tee file`, `... | Set-Content file`). */
+function pipeTargets(text) {
+  const targets = []
+  for (const part of String(text).split('|').slice(1)) {
+    const body = part.replace(/^\s*(?:tee|Set-Content|Out-File|Add-Content)\b/iu, '')
+    if (body === part) continue
+    for (const token of pathArgs(body)) targets.push(token)
+  }
+  return targets
+}
+
 function addTarget(targets, token, map) {
   if (token === undefined || token === '') return
   if (token.startsWith('$')) {
@@ -114,37 +99,29 @@ function addTarget(targets, token, map) {
 /** Decide one shell statement: which explicit paths it writes and whether it is code. */
 function segmentAccess(text, root, policy, cwd, map) {
   if (/\bgit\s+(?:status|add|commit|push)\b/iu.test(text)) {
-    return { write: false, forceCode: false, targets: [], codeTargets: [], protectedTargets: [], outsideTargets: [] }
+    return { write: false, forceCode: false, codeTargets: [], protectedTargets: [], outsideTargets: [] }
   }
   if (/\bgit\s+(?:checkout|reset|clean)\b/iu.test(text)) {
-    return { write: true, forceCode: true, targets: [], codeTargets: [], protectedTargets: [], outsideTargets: [] }
+    return { write: true, forceCode: true, codeTargets: [], protectedTargets: [], outsideTargets: [] }
   }
   const raw = []
-  const trash = /(?:^|\s)(?:node\s+)?[^\s]*trash\.mjs\b([\s\S]*)$/iu.exec(text)
-  if (trash !== null) {
-    for (const token of pathArgs(trash[1])) addTarget(raw, token, map)
-  } else {
-    const verb = WRITE_VERB.exec(text)
-    if (verb !== null) {
-      const tail = text.slice(verb.index + verb[0].length)
-      for (const token of pathArgs(tail)) addTarget(raw, token, map)
-    }
-    for (const token of redirectionTargets(text)) addTarget(raw, token, map)
+  const verb = WRITE_VERB.exec(text)
+  if (verb !== null) {
+    const tail = text.slice(verb.index + verb[0].length)
+    for (const token of pathArgs(tail)) addTarget(raw, token, map)
   }
-  const targets = []
+  for (const token of redirectionTargets(text)) addTarget(raw, token, map)
+  for (const token of pipeTargets(text)) addTarget(raw, token, map)
   const codeTargets = []
   const protectedTargets = []
   const outsideTargets = []
-  const docsTargets = []
   for (const value of raw) {
     const target = classifyPath(root, path.resolve(cwd, value), policy)
     if (target.outside) { outsideTargets.push(target.absolute); continue }
-    targets.push(target.absolute)
     if (target.protected) protectedTargets.push(target.relative)
     if (target.code) codeTargets.push(target.relative)
-    if (target.docs) docsTargets.push(target.relative)
   }
-  return { write: raw.length > 0 || WRITE_VERB.test(text), forceCode: false, targets, codeTargets, protectedTargets, outsideTargets, docsTargets }
+  return { write: raw.length > 0 || WRITE_VERB.test(text), forceCode: false, codeTargets, protectedTargets, outsideTargets }
 }
 
 /** Split statements; pipelines stay in one statement. */
@@ -159,10 +136,8 @@ export function shellAccess(command, root, policy, cwd = root) {
   return {
     write: parts.length > 0,
     forceCode: parts.some(item => item.forceCode),
-    targets: parts.flatMap(item => item.targets ?? []),
     codeTargets: parts.flatMap(item => item.codeTargets ?? []),
     protectedTargets: parts.flatMap(item => item.protectedTargets ?? []),
     outsideTargets: parts.flatMap(item => item.outsideTargets ?? []),
-    docsTargets: parts.flatMap(item => item.docsTargets ?? []),
   }
 }

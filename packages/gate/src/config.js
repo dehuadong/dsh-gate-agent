@@ -11,7 +11,18 @@ export const DEFAULT_CODE_EXTENSIONS = [
   '.rb', '.php', '.swift', '.scala', '.lua', '.sh', '.ps1', '.sql',
   '.css', '.scss', '.html', '.vue', '.svelte', '.astro',
 ]
-const ALLOWED = new Set(['enabled', 'version', 'codeExtensions', 'codePaths', 'protected'])
+export const DEFAULT_CODE_PATHS = [
+  'package.json',
+  'package-lock.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  'tsconfig.json',
+  'cordis.patch.yml',
+  'Makefile',
+  'Dockerfile',
+  '.github/workflows/',
+]
+const ALLOWED = new Set(['enabled', 'version', 'codeExtensions', 'codePaths', 'protected', 'notesSkillPath'])
 
 function nearest(start, marker) {
   let current = path.resolve(start)
@@ -78,10 +89,20 @@ export function validateConfig(value, configPath) {
   if (codePaths === undefined) return { kind: 'invalid', configPath, reason: 'codePaths must be relative paths' }
   const extraProtected = value.protected === undefined ? [] : normalizeList(value.protected)
   if (extraProtected === undefined) return { kind: 'invalid', configPath, reason: 'protected must be relative paths' }
+  const notesSkillPath = value.notesSkillPath === undefined ? undefined : normalizePath(value.notesSkillPath)
+  if (value.notesSkillPath !== undefined && notesSkillPath === undefined) {
+    return { kind: 'invalid', configPath, reason: 'notesSkillPath must be a relative path' }
+  }
   return {
     kind: 'ok',
     configPath,
-    policy: { version: 2, codeExtensions, codePaths, protected: [...new Set([...DEFAULT_PROTECTED, ...extraProtected])] },
+    policy: {
+      version: 2,
+      codeExtensions,
+      codePaths,
+      protected: [...new Set([...DEFAULT_PROTECTED, ...extraProtected])],
+      ...notesSkillPath === undefined ? {} : { notesSkillPath },
+    },
   }
 }
 

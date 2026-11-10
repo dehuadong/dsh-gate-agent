@@ -1,6 +1,6 @@
 # Agent Note: Gate 的 discuss 运行时协议
 
-Status: rejected — 放弃Gate插件开发
+Status: proposed
 
 工作项：把 `AGENTS.md` 的 Discuss 要求从语义约定变成 Gate 注入的运行时协议。
 
@@ -97,7 +97,7 @@ workflow
 本项不实现自动授权复用。
 
 - discuss 不能自行转 planning/implement；
-- 用户仍用 `/gate-plan` / `/gate-implement` 显式授权；
+- 用户仍用 `/gate-enter-plan` / `/gate-enter-implement` 显式授权；
 - 复用旧授权需要单独设计，不在本项假装实现。
 
 ### 非目标

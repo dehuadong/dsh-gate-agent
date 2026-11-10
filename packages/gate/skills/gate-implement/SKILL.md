@@ -17,7 +17,7 @@ After the Implementation Gate passes, create implementation tickets only when de
 
 Implement directly when the work fits one coherent execution unit.
 
-Read `<gate-implement-dir>/tickets.md` when the work is too large or has meaningful independent slices or dependencies.
+Read `tickets.md` when the work is too large or has meaningful independent slices or dependencies.
 
 Do not create tickets merely to enumerate coding steps.
 

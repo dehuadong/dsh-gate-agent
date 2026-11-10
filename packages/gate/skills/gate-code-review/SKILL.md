@@ -1,7 +1,12 @@
 ---
-name: gate-code-review-standards
-description: Gate Standards review worker：只评审仓库标准与当前权威决定，保留原 code-review 的固定点、标准来源与 smell baseline，不评审 Spec 轴。
+name: gate-code-review
+description: Gate code review worker：由主 agent 读取并提炼后派发；一个 worker 同时评审 Standards 与 Spec 两轴，不拆成两个技能。
 ---
+
+Review the requested change scope on both **Standards** and **Spec** axes in one pass. Do not spawn sub-agents. The main agent has already read this method and will supply the concrete task, fixed point, and acceptance contract; do not re-load gate skills or method files.
+
+## Standards
+
 
 Review the requested change scope on the **Standards** axis only, including uncommitted work when applicable:
 
@@ -52,3 +57,52 @@ Report, per file/hunk where relevant: (a) every place the diff violates a docume
 ```
 
 Empty `findings` means this axis passes. Do not fix the findings.
+
+
+## Spec
+
+
+Review the requested change scope on the **Spec** axis only, including uncommitted work when applicable:
+
+- does the change satisfy the governing work item's scope and acceptance conditions, including the work item acceptance contract?
+
+Do not review the Standards axis and do not spawn sub-agents. Resolve work tracking and document ownership from project instructions.
+
+## Process
+
+### 1. Pin the fixed point
+
+Use the fixed point supplied by the gate or implementation workflow. Reuse the baseline already recorded in the conversation; ask only when the intended scope cannot be established from available context.
+
+Capture the exact review commands once. For committed branch changes use `git diff <fixed-point>...HEAD`; for implementation worktree changes compare the recorded baseline to the working tree and separately inspect scoped untracked files. Include staged and unstaged changes, excluding pre-existing user changes and other tasks. Also record relevant commits. When existing changes overlap, inspect attribution rather than discarding the entire file.
+
+Before reviewing, resolve the fixed point and verify the complete scope, including new files. If it is empty, report no changes to review; do not mistake an empty committed diff for an empty worktree.
+
+### 2. Identify the acceptance contract
+
+First reuse the governing work item, acceptance conditions and applicable design already supplied by the gate or conversation. Otherwise:
+
+1. Resolve a work identifier or path from the user's request, branch or relevant commits; locate it through the project's configured tracker or existing work-item convention.
+2. Read that work item's selected scope and acceptance conditions, then follow its references to the applicable revision and sections of the work item contract. Use the registered document owner to resolve design decisions; do not infer a contract solely from a matching filename.
+3. For direct changes without a separate work item, use the authorized user request and settled decisions in the conversation as the contract. If the contract still cannot be identified, ask the gate for its owner. Report the gap; do not invent acceptance.
+
+### 3. Output
+
+Report: (a) requirements of the acceptance contract that are missing or partial; (b) behaviour in the diff that wasn't requested (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote or identify the exact contract clause for each finding.
+
+```json
+{"ok":true,"findings":[{"axis":"Spec","summary":"...","evidence":"...","severity":"blocking|important"}],"summary":"..."}
+```
+
+Empty `findings` means this axis passes. Do not fix the findings.
+
+
+## Combined output
+
+Return both axes in one result:
+
+``json
+{"ok":true,"standards":{"findings":[{"axis":"Standards","summary":"...","evidence":"...","severity":"blocking|important"}]},"spec":{"findings":[{"axis":"Spec","summary":"...","evidence":"...","severity":"blocking|important"}]},"summary":"..."}
+``
+
+Empty indings means that axis passes. Do not fix findings.

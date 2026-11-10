@@ -1,22 +1,11 @@
 {
-  "name": "dsh-gate-agent",
+  "name": "dsh-gate-workspace",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Full write gate and phase orchestrator with plugin-local skills.",
-  "exports": {
-    ".": "./index.js"
-  },
-  "files": [
-    "index.js",
-    "src/",
-    "skills/",
-    "cordis.patch.yml",
-    "README.md"
-  ],
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
+  "description": "Repository for the dsh-gate-agent plugin package.",
+  "scripts": {
+    "test": "node packages/gate/test/unit.mjs && node packages/gate/test/composition.mjs",
+    "verify-notes": "node .agents/skills/write-agent-notes/scripts/verify-agent-note-tree.ts --root .agents/notes && node .agents/skills/write-agent-notes/scripts/verify-agent-note-format.ts --root .agents/notes && node .agents/skills/write-agent-notes/scripts/verify-archived-agent-notes.ts --root .agents/notes"
   }
 }

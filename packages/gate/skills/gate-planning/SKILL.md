@@ -8,8 +8,8 @@ description: Gate 派发的 planning worker；保留原 planning 工作项、合
 ## Project binding
 
 - 本次工作项就是 proposed Agent Note；
-- 产品行为、范围、验收由工作项拥有；本项目不建立独立 Spec；
-- 工作项内容按 `<gate-planning-dir>/proposal.md`；技术设计按 `<gate-planning-dir>/rfc.md`；
+- 产品行为、范围、验收由工作项拥有；
+- 工作项内容按 `proposal.md`；技术设计按 `rfc.md`；
 - 技术设计与长期决定写入 Agent Note；
 - 模板只用 `<skills-root>/write-agent-notes/templates/proposed.md`；不新增或复制模板；
 - Note 的位置、格式、生命周期遵循 `write-agent-notes` Skill；不得在 planning 内另建生命周期或状态；
@@ -19,9 +19,11 @@ description: Gate 派发的 planning worker；保留原 planning 工作项、合
 
 ## 1. 确定工作项
 
-本次工作项由 proposed Agent Note 承接。按 `<gate-planning-dir>/proposal.md` 写清 why、范围与非目标、产品行为与验收、决定与未决问题、评审与批准证据。
+本次工作项由 proposed Agent Note 承接。按 `proposal.md` 写清 why、范围与非目标、产品行为与验收、决定与未决问题、评审与批准证据。
 
 复用合适的既有 Note；需要新 Note 时加载技能 `write-agent-notes` 创建 proposed Note，不另建独立 Proposal 文件，也不要求 Issue tracker。
+
+在 gate 环境中，proposed Note 的落盘使用 `gate_note_write`（路径相对 `.agents/notes/proposed`）；通用 `write`/`edit`/shell 在 planning 被限制。
 
 工作项与设计在同一份 Note 分节；工作项不复制 Design 正文，Design 不改写工作项验收。
 
@@ -33,7 +35,7 @@ description: Gate 派发的 planning worker；保留原 planning 工作项、合
 
 ### 探索性设计
 
-当技术可行性会实质影响产品范围时，读取技术设计检查项（`<gate-planning-dir>/rfc.md`），在 proposed Note 中形成探索草案。
+当技术可行性会实质影响产品范围时，读取技术设计检查项（`rfc.md`），在 proposed Note 中形成探索草案。
 
 探索草案必须区分产品事实与临时假设，把影响产品范围的结论反馈给工作项，不得作为实施依据。
 
@@ -41,9 +43,9 @@ description: Gate 派发的 planning worker；保留原 planning 工作项、合
 
 ### 技术设计定稿
 
-需要解决重要技术决定时，使用 技术设计检查项（`<gate-planning-dir>/rfc.md`），把已确定的产品合同转成 Agent Note 中的技术设计；一份产品合同可以由多个边界明确的 Note 分别承接。
+需要解决重要技术决定时，使用 技术设计检查项（`rfc.md`），把已确定的产品合同转成 Agent Note 中的技术设计；一份产品合同可以由多个边界明确的 Note 分别承接。
 
-设计定稿遵循 技术设计规则（`<gate-planning-dir>/rfc.md`） 的合同稳定性与评审条件。Note 的 proposed/implemented 表示交付生命周期，不代替评审和批准证据。
+设计定稿遵循 技术设计规则（`rfc.md`） 的合同稳定性与评审条件。Note 的 proposed/implemented 表示交付生命周期，不代替评审和批准证据。
 
 使用项目既有领域语言和适用架构约束。领域术语与模型变化使用 `domain-modeling`；需要为架构决定单独建档时，使用 `adr` 的准入条件判断，在相关 Agent Note 中记录决定。
 

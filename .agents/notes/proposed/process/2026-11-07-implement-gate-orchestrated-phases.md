@@ -1,6 +1,6 @@
 # Agent Note: gate-planning 与 Agent Note 的整合
 
-Status: rejected — 放弃Gate插件开发
+Status: proposed
 
 工作项：把 `gate-planning` 与 `proposal.md`、`rfc.md`、`write-agent-notes` 整合；工作项与技术设计由同一份 proposed Agent Note 承接。
 
@@ -93,12 +93,12 @@ why、背景、约束
 
 ### 5. Gate 协议
 
-`/gate-plan` 后主代理派 planning worker，注入：
+`/gate-enter-plan` 后主代理派 planning worker，注入：
 
 ```text
-gate-planning/SKILL.md
-gate-planning/proposal.md
-gate-planning/rfc.md
+packages/gate/skills/gate-planning/SKILL.md
+packages/gate/skills/gate-planning/proposal.md
+packages/gate/skills/gate-planning/rfc.md
 global write-agent-notes/SKILL.md
 write-agent-notes/templates/proposed.md
 ```
@@ -108,7 +108,7 @@ write-agent-notes/templates/proposed.md
 worker 完成后：
 
 ```text
-gate_record({ node:'plan' })
+gate_record({ node:'plan', task })
 ```
 
 ### 6. 文件变更
@@ -116,16 +116,16 @@ gate_record({ node:'plan' })
 修改：
 
 ```text
-skills/gate-planning/SKILL.md
-skills/gate-planning/proposal.md
-skills/gate-plan-review/SKILL.md
-index.js（协议说明）
+packages/gate/skills/gate-planning/SKILL.md
+packages/gate/skills/gate-planning/proposal.md
+packages/gate/skills/gate-plan-review/SKILL.md
+packages/gate/index.js（协议说明）
 ```
 
 删除：
 
 ```text
-skills/gate-planning/spec.md
+packages/gate/skills/gate-planning/spec.md
 ```
 
 不新增：
@@ -166,8 +166,8 @@ write-agent-notes 副本
 5. Note 生命周期使用 `write-agent-notes`；
 6. 不建独立 Spec；
 7. review 只报告，不修改 Note/状态；
-8. `node test.mjs`、`npm run verify` 通过；
-9. 真实 `/gate-plan` 创建/更新同一份 proposed Note。
+8. `node packages/gate/test/unit.mjs`、`npm run verify-notes` 通过；
+9. 真实 `/gate-enter-plan` 创建/更新同一份 proposed Note。
 
 ## Plan Review
 

@@ -37,7 +37,7 @@ why、背景、约束
 ```
 
 - `## Proposal` 的子项是内容要求，不是新增模板；
-- `## Design` 是自由节，由 `<gate-planning-dir>/rfc.md` 检查；
+- `## Design` 是自由节，由 `rfc.md` 检查；
 - `## Alternatives considered`、`## Acceptance criteria`、`## Risks` 保持 Agent Note 模板结构；
 - 工作项内容与设计写在同一份 Note，不复制到第二份文件。
 

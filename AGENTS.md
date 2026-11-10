@@ -51,10 +51,28 @@
 
 文档和仓库治理工作可以绕过该工程工作流；涉及重要产品、技术、架构或其他工程合同变化时，仍遵守 GATES 门控规则。
 
+## 仓库结构
+
+- 仓库治理层：根 `AGENTS.md`、`.agents/`、`docs/`、`deepseek-harness/`（开发用目录联接，gitignored）。
+- 插件包层：`packages/gate/`，唯一 `dsh.bundle`。
+- 插件运行时不得读取仓库 `.agents/`、`docs/`、`AGENTS.md`；项目级资源从 gate root 或 Config 解析。
+- 目录边界决策见 `.agents/notes/implemented/process/2026-11-10-repo-plugin-boundary.md`。
+
 ## DSH 插件与预设
 
 在开发deepseek-harness 插件时遇到问题可参阅deepseek-harness官方源码工程包 `deepseek-harness/packages`（仓库根下的目录联接）
-DSH UI设计判断参考`deepseek-harness/docs/ui-design-review-cases.zh.md`
-Web UI 样式参考`deepseek-harness/docs/web-styling.zh.md`
-DSH  UI统一圆角规范`deepseek-harness/docs/ui-radius.zh.md`
+DSH 开发文档参考：`deepseek-harness/docs`
 
+## 文档与约定
+
+文档遵循 [`docs/AGENTS.md`](docs/AGENTS.md)：文档分层、位置、职责与写法。
+
+- Domain docs：单上下文，领域术语表位于根 `GLOSSARY.md`（术语确定时由 `domain-modeling` 创建）；术语与决策消费规则见 [`docs/agents/domain.md`](docs/agents/domain.md)。
+- Agent Note：长期技术提案、设计、决定与备选存放在 `.agents/notes/`，格式与生命周期遵循 `write-agent-notes` Skill；本仓库不使用 Issue 跟踪器，工作项由当前任务/对话承载并链接到 Note。
+
+## 重要改动必须留笔记
+
+1. 非平凡改动（改了行为、架构、跨文件契约、流程与工具链、测试策略、落盘/网络/配置格式）前，遵循 `write-agent-notes` Skill 写或更新笔记；机械性小改（样式、格式化、打标、不改行为的补丁）直接提交。
+2. 写之前先检索 .agents/notes/ 里的同主题旧笔记：有归属就地更新；新想法先放 proposed/，落地随同代码改动转 implemented/；新方案彻底取代旧决策时，同批归档旧篇并标明被谁取代。
+3. 被放弃的方案先写它最强的理由，再解释为什么不用。
+4. 提交前跑 npm run verify-notes，红了先修再交。

@@ -1,8 +1,8 @@
 # Agent Note: Gate 对 GATES.md 的剩余能力
 
-Status: rejected — 放弃Gate插件开发
+Status: proposed
 
-工作项：在 `tools/gate` 中补齐 Entry gate、review-only、block/resume、verify evidence，使 Gate 不只承接 phase 和写权限。
+工作项：在 `packages/gate` 中补齐 Entry gate、review-only、block/resume、verify evidence，使 Gate 不只承接 phase 和写权限。
 
 ## Problem
 
@@ -15,7 +15,7 @@ Status: rejected — 放弃Gate插件开发
 
 未承接：
 
-- `/gate-implement` 不检查 Plan Review 是否通过、是否有批准证据；
+- `/gate-enter-implement` 不检查 Plan Review 是否通过、是否有批准证据；
 - 没有 review-only 路径；
 - 只有 5 轮耗尽 blocked，没有手动 block/resume；
 - verify 只信 `gate_record({ok:true})`，没有命令与证据。
@@ -41,7 +41,7 @@ State 增加：
 ```
 
 - `gate_record({node:'plan-review', findings:[]})` 成功时 `planReady=true`；
-- `/gate-implement`：
+- `/gate-enter-implement`：
   - 有 proposal Note 或 mechanical；
   - 非 mechanical 时 `planReady=true`；
   - `work !== 'blocked'`；
@@ -112,7 +112,7 @@ State 增加：
 {
   "node": "verify",
   "verification": {
-    "commands": ["node test.mjs"],
+    "commands": ["node packages/gate/test/unit.mjs"],
     "evidence": ["artifacts/..."],
     "passed": true
   }
@@ -138,7 +138,7 @@ Gate 校验：
 
 **Entry gate 只检查 proposed Note。** 最强理由是简单；没有检查 plan review/blocker，故不采用。
 
-**review-only 复用 `/gate-implement`。** 最强理由是少命令；会要求 implementation 授权和 verify，故独立。
+**review-only 复用 `/gate-enter-implement`。** 最强理由是少命令；会要求 implementation 授权和 verify，故独立。
 
 **block 复用 work=blocked。** 最强理由是已有字段；无法区分用户 block 与轮次耗尽，故加 phase/blockedFrom。
 
@@ -146,7 +146,7 @@ Gate 校验：
 
 ## Acceptance criteria
 
-1. 未通过 plan review 的 `/gate-implement` 被拒绝；
+1. 未通过 plan review 的 `/gate-enter-implement` 被拒绝；
 2. mechanical 可跳过 planReady；
 3. `/gate-code-review` 不进入 implement、不写代码、不修复；
 4. `/gate-block` 冻结写入，`/gate-resume` 恢复；
