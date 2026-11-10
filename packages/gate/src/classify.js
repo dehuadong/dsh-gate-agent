@@ -16,15 +16,6 @@ export function isWithin(relative, base) {
   return child === parent || child.startsWith(`${parent}/`)
 }
 
-function isCode(relative, policy) {
-  const normalized = relative.replace(/[. ]+$/u, '')
-  const ext = path.extname(normalized).toLowerCase()
-  if (policy.codeExtensions.includes(ext)) return true
-  return policy.codePaths.some(entry => entry.endsWith('/')
-    ? isWithin(relative, entry.slice(0, -1))
-    : foldPath(relative) === foldPath(entry))
-}
-
 /** Classify a file target relative to the workspace root and the session cwd. */
 export function classifyPath(root, value, policy, cwd = root) {
   const absolute = path.resolve(cwd, String(value ?? ''))
@@ -33,15 +24,12 @@ export function classifyPath(root, value, policy, cwd = root) {
   const protectedPath = !outside && policy.protected.some(entry => isWithin(relative, entry))
   const protectedAncestor = !outside && policy.protected.some(entry => isWithin(entry, relative))
   const protectedTarget = protectedPath || protectedAncestor
-  const code = !outside && isCode(relative, policy)
   return {
     absolute,
     relative,
     outside,
-    code,
     protected: protectedTarget,
     protectedAncestor,
-    docs: !outside && !code && !protectedTarget,
   }
 }
 
@@ -96,13 +84,13 @@ function addTarget(targets, token, map) {
   targets.push(token)
 }
 
-/** Decide one shell statement: which explicit paths it writes and whether it is code. */
+/** Decide one shell statement: which explicit paths it writes. */
 function segmentAccess(text, root, policy, cwd, map) {
   if (/\bgit\s+(?:status|add|commit|push)\b/iu.test(text)) {
-    return { write: false, forceCode: false, codeTargets: [], protectedTargets: [], outsideTargets: [] }
+    return { write: false, protectedTargets: [], outsideTargets: [] }
   }
   if (/\bgit\s+(?:checkout|reset|clean)\b/iu.test(text)) {
-    return { write: true, forceCode: true, codeTargets: [], protectedTargets: [], outsideTargets: [] }
+    return { write: true, protectedTargets: [], outsideTargets: [] }
   }
   const raw = []
   const verb = WRITE_VERB.exec(text)
@@ -112,16 +100,14 @@ function segmentAccess(text, root, policy, cwd, map) {
   }
   for (const token of redirectionTargets(text)) addTarget(raw, token, map)
   for (const token of pipeTargets(text)) addTarget(raw, token, map)
-  const codeTargets = []
   const protectedTargets = []
   const outsideTargets = []
   for (const value of raw) {
     const target = classifyPath(root, path.resolve(cwd, value), policy)
     if (target.outside) { outsideTargets.push(target.absolute); continue }
     if (target.protected) protectedTargets.push(target.relative)
-    if (target.code) codeTargets.push(target.relative)
   }
-  return { write: raw.length > 0 || WRITE_VERB.test(text), forceCode: false, codeTargets, protectedTargets, outsideTargets }
+  return { write: raw.length > 0 || WRITE_VERB.test(text), protectedTargets, outsideTargets }
 }
 
 /** Split statements; pipelines stay in one statement. */
@@ -129,14 +115,12 @@ function segments(text) {
   return String(text).split(/&&|\|\||;|\r?\n/u).map(part => part.trim()).filter(Boolean)
 }
 
-/** Summarize explicit writes and whether any target is code. */
+/** Summarize explicit writes. */
 export function shellAccess(command, root, policy, cwd = root) {
   const map = assignments(command)
   const parts = segments(command).map(part => segmentAccess(part, root, policy, cwd, map)).filter(item => item.write)
   return {
     write: parts.length > 0,
-    forceCode: parts.some(item => item.forceCode),
-    codeTargets: parts.flatMap(item => item.codeTargets ?? []),
     protectedTargets: parts.flatMap(item => item.protectedTargets ?? []),
     outsideTargets: parts.flatMap(item => item.outsideTargets ?? []),
   }

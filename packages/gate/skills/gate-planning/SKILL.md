@@ -15,9 +15,15 @@ description: Gate 规划方法：主 agent 读取后提炼任务并派发；work
 - 产品行为、范围、验收由工作项拥有；
 - 工作项内容按 `proposal.md`；技术设计按 `rfc.md`；
 - 技术设计与长期决定写入 Agent Note；
-- 模板只用 `<skills-root>/write-agent-notes/templates/proposed.md`；不新增或复制模板；
-- Note 的位置、格式、生命周期遵循 `write-agent-notes` Skill；不得在 planning 内另建生命周期或状态；
+- 模板使用内置 `gate-write-agent-notes` 的 `templates/proposed.md`；不新增或复制模板；
+- Note 的位置、格式、生命周期遵循内置 `gate-write-agent-notes`；不得在 planning 内另建生命周期或状态；
 - Plan Review 由 gate 的 `gate-plan-review` worker 执行；planning 接收主代理转交的 findings，负责决定与修正。
+
+## 0. 先检索与判定归属
+
+- 加载内置 `gate-write-agent-notes`，按 §3 用 `grep`/`glob`/`read` 检索入口注释、分类树、关键词和模块 README，不依赖 shell。
+- 按 §4 判定：既有决定未变时就地同步 `implemented/` Note；新想法写 `proposed/`；class 只能是六类封闭集。
+- 把检索证据写入 `noteSearch`，把归属与 class 写入 `notePaths` / `noteDecision`，随 `gate_record({node:'plan'})` 提交。
 
 把当前对话与项目上下文整理成最少但足够的规划工件，使工作具备实施条件。先确定各项事实的项目属主，再按需让产品合同与技术探索往返收敛；不为填满文档类型而创建工件。
 
@@ -25,9 +31,9 @@ description: Gate 规划方法：主 agent 读取后提炼任务并派发；work
 
 本次工作项由 proposed Agent Note 承接。按 `proposal.md` 写清 why、范围与非目标、产品行为与验收、决定与未决问题、评审与批准证据。
 
-复用合适的既有 Note；需要新 Note 时加载技能 `write-agent-notes` 创建 proposed Note，不另建独立 Proposal 文件，也不要求 Issue tracker。
+复用合适的既有 Note；需要新 Note 时加载内置技能 `gate-write-agent-notes` 创建 proposed Note，不另建独立 Proposal 文件，也不要求 Issue tracker。
 
-在 gate 环境中，proposed Note 的落盘使用 `gate_note_write`（路径相对 `.agents/notes/proposed`）；通用 `write`/`edit`/shell 在 planning 被限制。
+在 gate 环境中，Note 的落盘使用 `gate_note_write`：新建写 `proposed/<class>/...`，原地同步既有 implemented Note 写 `implemented/<class>/...`；通用 `write`/`edit`/shell 在 planning 被限制。
 
 工作项与设计在同一份 Note 分节；工作项不复制 Design 正文，Design 不改写工作项验收。
 

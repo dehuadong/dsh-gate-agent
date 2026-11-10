@@ -6,6 +6,6 @@
   "description": "Repository for the dsh-gate-agent plugin package.",
   "scripts": {
     "test": "node packages/gate/test/unit.mjs && node packages/gate/test/composition.mjs",
-    "verify-notes": "node .agents/skills/write-agent-notes/scripts/verify-agent-note-tree.ts --root .agents/notes && node .agents/skills/write-agent-notes/scripts/verify-agent-note-format.ts --root .agents/notes && node .agents/skills/write-agent-notes/scripts/verify-archived-agent-notes.ts --root .agents/notes"
+    "verify-notes": "node .agents/skills/write-agent-notes/scripts/verify-agent-note-tree.ts --root .agents/notes && node .agents/skills/write-agent-notes/scripts/verify-agent-note-format.ts --root .agents/notes && node .agents/skills/write-agent-notes/scripts/verify-agent-note-lifecycle.ts --root .agents/notes && node .agents/skills/write-agent-notes/scripts/verify-archived-agent-notes.ts --root .agents/notes"
   }
 }

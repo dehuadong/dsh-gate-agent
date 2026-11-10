@@ -1,9 +1,14 @@
-import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import path from 'node:path'
-import { STATE_DIR } from './config.js'
-
 export const PHASES = ['discuss', 'orchestrating', 'reviewing', 'docs', 'blocked', 'complete']
+
+const states = new Map()
+
+function stateKey(root, agent) {
+  return `${root}\u0000${String(agent?.id ?? agent ?? 'anonymous')}`
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value))
+}
 
 export function defaultState() {
   return {
@@ -17,6 +22,12 @@ export function defaultState() {
     planReady: false,
     verification: null,
     blockedFrom: null,
+    notePaths: [],
+    noteDecision: null,
+    noteSearch: null,
+    noteVerified: false,
+    noteFinalized: false,
+    noteFinalizeRecovery: [],
     pending: {},
     updatedAt: null,
   }
@@ -36,29 +47,22 @@ export function normalizeState(value) {
       code: value?.exhausted?.code === true,
     },
     verification: value?.verification !== null && typeof value?.verification === 'object' ? value.verification : null,
+    notePaths: Array.isArray(value?.notePaths) ? value.notePaths : [],
+    noteDecision: typeof value?.noteDecision === 'string' ? value.noteDecision : null,
+    noteSearch: typeof value?.noteSearch === 'string' ? value.noteSearch : null,
+    noteVerified: value?.noteVerified === true,
+    noteFinalized: value?.noteFinalized === true,
+    noteFinalizeRecovery: Array.isArray(value?.noteFinalizeRecovery) ? value.noteFinalizeRecovery : [],
     pending: value?.pending !== null && typeof value?.pending === 'object' && !Array.isArray(value.pending) ? value.pending : {},
   }
 }
 
-export function stateFile(root, agent) {
-  const id = createHash('sha1').update(String(agent?.id ?? agent ?? 'anonymous')).digest('hex').slice(0, 16)
-  return path.join(root, STATE_DIR, `${id}.json`)
-}
-
 export function loadState(root, agent) {
-  try {
-    return normalizeState(JSON.parse(readFileSync(stateFile(root, agent), 'utf8')))
-  } catch {
-    return defaultState()
-  }
+  return clone(states.get(stateKey(root, agent)) ?? defaultState())
 }
 
 export function saveState(root, agent, state) {
-  const file = stateFile(root, agent)
-  mkdirSync(path.dirname(file), { recursive: true })
-  const next = { ...state, updatedAt: new Date().toISOString() }
-  const temp = `${file}.${process.pid}.tmp`
-  writeFileSync(temp, JSON.stringify(next, null, 2))
-  renameSync(temp, file)
-  return next
+  const next = normalizeState({ ...state, updatedAt: new Date().toISOString() })
+  states.set(stateKey(root, agent), clone(next))
+  return clone(next)
 }

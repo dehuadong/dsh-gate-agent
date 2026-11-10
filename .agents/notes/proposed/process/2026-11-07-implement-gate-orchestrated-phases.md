@@ -2,7 +2,7 @@
 
 Status: proposed
 
-> 2026-11-10 Note [内置 write-agent-notes 与 Verify 后 lifecycle](./2026-11-10-gate-notes-builtin-lifecycle.md) 计划部分取代本页的“插件不复制 write-agent-notes”约束：“唯一载体”仍然成立；write-agent-notes 改为插件内置 vendor，项目仍不复制。
+> 2026-11-10 Note [内置 write-agent-notes 与 Verify 后 lifecycle](../../implemented/process/2026-11-10-gate-notes-builtin-lifecycle.md) 部分取代本页的“插件不复制 write-agent-notes”约束：“唯一载体”仍然成立；write-agent-notes 改为插件内置，项目仍不复制。
 
 工作项：把 `gate-planning` 与 `proposal.md`、`rfc.md`、`write-agent-notes` 整合；工作项与技术设计由同一份 proposed Agent Note 承接。
 
@@ -186,3 +186,5 @@ write-agent-notes 项目副本
 - planning worker 需要同时读三个方法，依赖主代理正确注入；
 - `Spec` 轴名称容易误解为独立 Spec，需要在 review 技能中明确；
 - 真实链路的 Note 创建与 review 回执尚未验证。
+
+

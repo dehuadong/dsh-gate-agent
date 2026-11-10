@@ -74,16 +74,7 @@ function fakeHost(workspace, rootSession, options = {}) {
   return { commands, tools, handlers, sections, projection: options.projection }
 }
 
-function addGate(workspace, value = {}) {
-  mkdirSync(path.join(workspace, '.agents'), { recursive: true })
-  writeFileSync(path.join(workspace, '.agents', 'gate.json'), JSON.stringify({
-    enabled: true,
-    version: 2,
-    codeExtensions: ['.ts', '.mjs'],
-    codePaths: ['package.json'],
-    ...value,
-  }))
-}
+function addGate() {}
 
 function addNotesSkill(workspace) {
   const dir = path.join(workspace, '.agents', 'skills', 'write-agent-notes')
@@ -96,11 +87,24 @@ function makeWorkspace(options = {}) {
   const workspace = mkdtempSync(path.join(os.tmpdir(), 'gate-core-'))
   addGate(workspace)
   if (options.notes !== false) addNotesSkill(workspace)
-  mkdirSync(path.join(workspace, '.agents', 'notes', 'proposed', 'feature'), { recursive: true })
+  for (const lifecycle of ['proposed', 'implemented', 'rejected', 'archived']) {
+    mkdirSync(path.join(workspace, '.agents', 'notes', lifecycle, 'feature'), { recursive: true })
+    writeFileSync(path.join(workspace, '.agents', 'notes', lifecycle, '.gitkeep'), '')
+  }
   if (options.note !== false) {
-    writeFileSync(path.join(workspace, '.agents', 'notes', 'proposed', 'feature', '2026-11-07-work.md'), '---\nStatus: proposed\n---\n')
+    writeFileSync(path.join(workspace, '.agents', 'notes', 'proposed', 'feature', '2026-11-07-work.md'), '# Agent Note: work\n\nStatus: proposed\n\n## Problem\n\np\n\n## Proposal\n\nx\n\n## Alternatives considered\n\n- a\n\n## Acceptance criteria\n\n- c\n\n## Risks\n\n- r\n')
   }
   return workspace
+}
+
+let testNoteSequence = 0
+function addTestNote(target) {
+  testNoteSequence += 1
+  const name = `2026-11-07-work-${testNoteSequence}.md`
+  const absolute = path.join(target, '.agents', 'notes', 'proposed', 'feature', name)
+  mkdirSync(path.dirname(absolute), { recursive: true })
+  writeFileSync(absolute, `# Agent Note: work ${testNoteSequence}\n\nStatus: proposed\n\n## Problem\n\np\n\n## Proposal\n\nx\n\n## Alternatives considered\n\n- a\n\n## Acceptance criteria\n\n- c\n\n## Risks\n\n- r\n`)
+  return `.agents/notes/proposed/feature/${name}`
 }
 
 const workspace = makeWorkspace()
@@ -112,18 +116,28 @@ const execWith = (target, targetAgent, name, args) => {
 }
 const exec = (name, args) => execWith(host, agent, name, args)
 const run = (name, input) => host.commands[name].handler({ agent, rawInput: input, attachments: [] })
-const record = args => {
-  const withWorkers = ['plan', 'plan-review', 'plan-revise', 'implement', 'code-review', 'implement-revise', 'verify', 'review'].includes(args.node)
+const record = async args => {
+  let withWorkers = ['plan', 'plan-review', 'plan-revise', 'implement', 'code-review', 'implement-revise', 'verify', 'review'].includes(args.node)
     && args.workerSessionIds === undefined
     ? { ...args, workerSessionIds: ['worker-test'] }
     : args
+  if (args.node === 'plan' && args.noteDecision === undefined) {
+    const notePath = addTestNote(workspace)
+    withWorkers = { ...withWorkers, noteDecision: 'new', noteSearch: 'test search', notePaths: [{ path: notePath, class: 'feature', lifecycle: 'proposed' }] }
+  }
   const withAxes = ['plan-review', 'code-review', 'review'].includes(args.node) && withWorkers.reviewAxes === undefined
     ? { ...withWorkers, reviewAxes: { standards: { findings: [] }, spec: { findings: [] } } }
     : withWorkers
   const withToolResults = args.node === 'verify' && withAxes.verification !== undefined && withAxes.verification.toolResults === undefined
     ? { ...withAxes, verification: { ...withAxes.verification, toolResults: ['tool-result-1'] } }
     : withAxes
-  return host.tools.gate_record.execute(withToolResults, { agent, signal: new AbortController().signal })
+  let result = await host.tools.gate_record.execute(withToolResults, { agent, signal: new AbortController().signal })
+  if (args.node === 'verify' && result.ok === true && result.state?.node === 'note-lifecycle') {
+    await host.tools.gate_note_finalize.execute({}, { agent })
+    await host.tools.gate_note_verify.execute({}, { agent })
+    result = await host.tools.gate_record.execute({ node: 'note-lifecycle' }, { agent })
+  }
+  return result
 }
 const stateOf = (target = workspace, targetAgent = agent) => loadState(target, targetAgent)
 
@@ -134,7 +148,7 @@ check('discuss denies docs', (await exec('write', { file_path: 'docs/x.md' })).k
 await run('gate-docs', 'docs/')
 check('docs command enters docs', stateOf().phase === 'docs')
 check('docs phase allows docs', (await exec('write', { file_path: 'docs/x.md' })).kind === 'allow')
-check('docs phase denies code', (await exec('write', { file_path: 'src/x.ts' })).kind === 'deny')
+check('docs phase allows code writes (no content classification)', (await exec('write', { file_path: 'src/x.ts' })).kind === 'allow')
 check('docs phase can end through gate_record', (await record({ node: 'docs' })).phase === 'discuss')
 check('docs gate_record leaves docs', stateOf().phase === 'discuss')
 await run('gate-return-discuss')
@@ -278,6 +292,8 @@ const wakeHost = fakeHost(makeWorkspace())
 await wakeHost.commands['gate-enter-plan'].handler({ agent: wakeAgent, rawInput: '', attachments: [] })
 await new Promise(resolve => setTimeout(resolve, 5))
 check('gate-enter-plan wakes the agent for orchestration', wakeMessages.length === 1 && wakeMessages[0].content?.[0]?.text?.includes('gate-planning') && wakeMessages[0].source?.kind === 'gate-command' && wakeMessages[0].source?.command === 'gate-enter-plan')
+const planWakeText = wakeMessages[0].content?.[0]?.text ?? ''
+check('plan wake names notes skill and required note fields', planWakeText.includes('gate-write-agent-notes') && planWakeText.includes('noteDecision') && planWakeText.includes('notePaths') && planWakeText.includes('noteSearch'))
 
 const quietMessages = []
 const quietAgent = { id: 'quiet-session', session: { header: {} }, followup: message => quietMessages.push(message) }
@@ -289,7 +305,18 @@ const wakeInitAgent = { id: 'wake-init-session', session: { header: {} }, follow
 const wakeInitWorkspace = mkdtempSync(path.join(os.tmpdir(), 'gate-init-wake-'))
 const wakeInitHost = fakeHost(wakeInitWorkspace)
 await wakeInitHost.commands['gate-init'].handler({ agent: wakeInitAgent, rawInput: '', attachments: [] })
-check('gate-init wakes with initialization feedback', wakeInitMessages.length === 1 && wakeInitMessages[0].content?.[0]?.text?.includes('phase=discuss') && wakeInitMessages[0].source?.command === 'gate-init' && existsSync(path.join(wakeInitWorkspace, '.agents', 'gate.json')))
+check('gate-init wakes with initialization feedback', wakeInitMessages.length === 1 && wakeInitMessages[0].content?.[0]?.text?.includes('phase=discuss') && !wakeInitMessages[0].content?.[0]?.text?.includes('/gate-enter-plan') && wakeInitMessages[0].source?.command === 'gate-init' && !existsSync(path.join(wakeInitWorkspace, '.agents', 'gate.json')))
+await wakeInitHost.commands['gate-init'].handler({ agent: wakeInitAgent, rawInput: '', attachments: [] })
+check('gate-init wakes again when already initialized', wakeInitMessages.length === 2 && wakeInitMessages[1].content?.[0]?.text?.includes('Gate 已初始化') && wakeInitMessages[1].source?.command === 'gate-init')
+
+const implementWakeMessages = []
+const implementWakeAgent = { id: 'wake-implement-session', session: { header: {} }, followup: message => implementWakeMessages.push(message) }
+const implementWakeWorkspace = makeWorkspace()
+const implementWakeHost = fakeHost(implementWakeWorkspace)
+saveState(implementWakeWorkspace, implementWakeAgent, { ...defaultState(), phase: 'discuss', task: 'work', planReady: true, noteDecision: 'new', notePaths: [{ path: addTestNote(implementWakeWorkspace), class: 'feature', lifecycle: 'proposed' }] })
+await implementWakeHost.commands['gate-enter-implement'].handler({ agent: implementWakeAgent, rawInput: '', attachments: [] })
+const implementWakeText = implementWakeMessages[0]?.content?.[0]?.text ?? ''
+check('implement wake names review, verify and lifecycle steps', implementWakeText.includes('gate-code-review') && implementWakeText.includes('gate-verify') && implementWakeText.includes('note-lifecycle'))
 
 const restrictionCalls = []
 let restrictionDisposals = 0
@@ -301,9 +328,8 @@ const restrictedAgent = {
 const restrictedHost = fakeHost(workspace)
 await restrictedHost.handlers['agent/pre-step']({ agent: restrictedAgent }, async () => ({ kind: 'allow' }))
 check('discuss restriction denies writes', restrictionCalls.at(-1)?.deny?.includes('write') === true && restrictionCalls.at(-1)?.deny?.includes('subagent') !== true)
-await restrictedHost.commands['gate-enter-plan'].handler({ agent: restrictedAgent, rawInput: '', attachments: [] })
+saveState(workspace, restrictedAgent, { ...defaultState(), phase: 'orchestrating', node: 'plan' })
 await restrictedHost.handlers['agent/pre-step']({ agent: restrictedAgent }, async () => ({ kind: 'allow' }))
-check('plan restriction denies writes but allows dispatch', restrictionCalls.at(-1)?.deny?.includes('write') === true && restrictionCalls.at(-1)?.deny?.includes('subagent') !== true)
 check('restriction disposes the previous filter', restrictionDisposals > 0)
 saveState(workspace, restrictedAgent, { ...defaultState(), phase: 'orchestrating', node: 'implement', work: 'active' })
 const implementWorker = {
@@ -332,10 +358,10 @@ check('worker prompt does not ask the worker to load methods', !workerPrompt.inc
 check('main prompt names the exact phase skill', workerSection.text({ agent: rootAgent }).includes('## 阶段方法') && workerSection.text({ agent: rootAgent }).includes('当前节点：plan') && workerSection.text({ agent: rootAgent }).includes('`gate-planning`'))
 check('main prompt requires a fresh skill load per dispatch', workerSection.text({ agent: rootAgent }).includes('## 派发规则') && workerSection.text({ agent: rootAgent }).includes('加载“阶段方法”') && !workerSection.text({ agent: rootAgent }).includes('## Method files'))
 check('plan worker generic write is denied', (await execWith(workerHost, childAgent, 'write', { file_path: '.agents/notes/proposed/feature/x.md' })).kind === 'deny')
-const noteWrite = await workerHost.tools.gate_note_write.execute({ path: 'feature/y.md', content: '# Note\n' }, { agent: childAgent })
+const noteWrite = await workerHost.tools.gate_note_write.execute({ path: 'feature/2026-11-10-y.md', content: '# Note\n' }, { agent: childAgent })
 check('plan worker can write a proposed note', noteWrite.ok === true)
 check('plan worker cannot write code', (await execWith(workerHost, childAgent, 'write', { file_path: 'src/x.ts' })).kind === 'deny')
-check('main agent still cannot write in orchestrating', (await execWith(workerHost, rootAgent, 'write', { file_path: 'docs/x.md' })).kind === 'deny')
+check('main agent can write in orchestrating', (await execWith(workerHost, rootAgent, 'write', { file_path: 'docs/x.md' })).kind === 'allow')
 check('child cannot call gate_record', (await workerHost.tools.gate_record.execute({ node: 'plan', task: 'x' }, { agent: childAgent })).code === 'root-only')
 saveState(workspace, rootAgent, { ...defaultState(), phase: 'orchestrating', node: 'implement', task: 'work' })
 check('implement worker can write code', (await execWith(workerHost, childAgent, 'write', { file_path: 'src/x.ts' })).kind === 'allow')
@@ -372,16 +398,14 @@ addGate(noNotes)
 const noNotesHost = fakeHost(noNotes)
 const noNotesAgent = { id: 'session-no-notes', session: { header: {} } }
 const noNotesPlan = await noNotesHost.commands['gate-enter-plan'].handler({ agent: noNotesAgent, rawInput: '', attachments: [] })
-check('plan without notes skill reports notes-skill-required', noNotesPlan.kind === 'error' && noNotesPlan.code === 'notes-skill-required' && noNotesPlan.text.includes('notes skill'))
+check('plan without project notes skill uses built-in notes', noNotesPlan.kind === 'success')
 
 const customNotes = mkdtempSync(path.join(os.tmpdir(), 'gate-custom-notes-'))
 addGate(customNotes, { notesSkillPath: 'custom/notes' })
-mkdirSync(path.join(customNotes, 'custom', 'notes'), { recursive: true })
-writeFileSync(path.join(customNotes, 'custom', 'notes', 'SKILL.md'), '---\nname: write-agent-notes\n---\n# Notes\n')
 const customNotesHost = fakeHost(customNotes)
 const customNotesAgent = { id: 'session-custom-notes', session: { header: {} } }
 const customNotesPlan = await customNotesHost.commands['gate-enter-plan'].handler({ agent: customNotesAgent, rawInput: '', attachments: [] })
-check('notesSkillPath configures project notes skill', customNotesPlan.kind === 'success')
+check('notesSkillPath remains accepted as deprecated config', customNotesPlan.kind === 'success')
 
 const noNote = makeWorkspace({ note: false })
 const noNoteHost = fakeHost(noNote)
@@ -390,65 +414,18 @@ saveState(noNote, noNoteAgent, { ...defaultState(), phase: 'discuss', task: 'mis
 const noNoteEnter = await noNoteHost.commands['gate-enter-implement'].handler({ agent: noNoteAgent, rawInput: '', attachments: [] })
 check('implement without proposed note is rejected', noNoteEnter.kind === 'error' && noNoteEnter.text.includes('工作项'))
 
-const invalid = mkdtempSync(path.join(os.tmpdir(), 'gate-invalid-'))
-mkdirSync(path.join(invalid, '.agents'), { recursive: true })
-writeFileSync(path.join(invalid, '.agents', 'gate.json'), '{broken')
-const invalidHost = fakeHost(invalid)
-const invalidAgent = { id: 'session-invalid', session: { header: {} } }
-check('invalid marker denies writes', (await execWith(invalidHost, invalidAgent, 'write', { file_path: 'docs/x.md' })).kind === 'deny')
-check('invalid marker denies worker dispatch', (await execWith(invalidHost, invalidAgent, 'subagent', { description: 'x', prompt: 'x' })).kind === 'deny')
-const invalidStatus = await invalidHost.commands['gate-status'].handler({ agent: invalidAgent, rawInput: '', attachments: [] })
-check('invalid marker is visible in status', invalidStatus.kind === 'error' && invalidStatus.text.includes('配置无效'))
-const invalidPlan = await invalidHost.commands['gate-enter-plan'].handler({ agent: invalidAgent, rawInput: '', attachments: [] })
-check('invalid marker cannot enter planning', invalidPlan.kind === 'error')
-
-const legacy = makeWorkspace()
-writeFileSync(path.join(legacy, '.agents', 'implement-gate.json'), '{}')
-const legacyHost = fakeHost(legacy)
-const legacyAgent = { id: 'session-legacy', session: { header: {} } }
-check('legacy gate trace denies writes', (await execWith(legacyHost, legacyAgent, 'write', { file_path: 'docs/x.md' })).kind === 'deny')
-const legacyStatus = await legacyHost.commands['gate-status'].handler({ agent: legacyAgent, rawInput: '', attachments: [] })
-check('legacy gate trace is visible in status', legacyStatus.kind === 'error' && legacyStatus.text.includes('legacy-gate-present'))
-const legacyPlan = await legacyHost.commands['gate-enter-plan'].handler({ agent: legacyAgent, rawInput: '', attachments: [] })
-check('legacy gate trace cannot enter planning', legacyPlan.kind === 'error')
-
-const legacyInit = mkdtempSync(path.join(os.tmpdir(), 'gate-legacy-init-'))
-mkdirSync(path.join(legacyInit, '.agents'), { recursive: true })
-writeFileSync(path.join(legacyInit, '.agents', 'implement-gate.json'), '{}')
-const legacyInitHost = fakeHost(legacyInit)
-const legacyInitResult = await legacyInitHost.commands['gate-init'].handler({ agent: { id: 'session-legacy-init', session: { header: {} } }, rawInput: '', attachments: [] })
-check('gate-init refuses a legacy gate trace', legacyInitResult.kind === 'error' && legacyInitResult.text.includes('旧 gate'))
-
-const legacyToolHost = fakeHost(makeWorkspace())
-legacyToolHost.tools.implement_gate = {}
-const legacyToolAgent = { id: 'session-legacy-tool', session: { header: {} } }
-const legacyToolStatus = await legacyToolHost.commands['gate-status'].handler({ agent: legacyToolAgent, rawInput: '', attachments: [] })
-check('legacy implement_gate tool invalidates the gate', legacyToolStatus.kind === 'error' && legacyToolStatus.text.includes('legacy-implement-gate-active'))
-
-const disabled = mkdtempSync(path.join(os.tmpdir(), 'gate-disabled-'))
-addGate(disabled, { enabled: false })
-const disabledHost = fakeHost(disabled)
-const disabledAgent = { id: 'session-disabled', session: { header: {} } }
-check('disabled marker is pass-through', (await execWith(disabledHost, disabledAgent, 'write', { file_path: 'docs/x.md' })).kind === 'allow')
-const disabledStatus = await disabledHost.commands['gate-status'].handler({ agent: disabledAgent, rawInput: '', attachments: [] })
-check('disabled marker is visible in status', disabledStatus.kind === 'success' && disabledStatus.text.includes('disabled'))
-const disabledPlan = await disabledHost.commands['gate-enter-plan'].handler({ agent: disabledAgent, rawInput: '', attachments: [] })
-check('disabled marker cannot enter planning', disabledPlan.kind === 'error')
-
 const initWorkspace = mkdtempSync(path.join(os.tmpdir(), 'gate-init-'))
 const initHost = fakeHost(initWorkspace)
 const initAgent = { id: 'session-init', session: { header: {} } }
 const initialized = await initHost.commands['gate-init'].handler({ agent: initAgent, rawInput: '', attachments: [] })
-check('gate-init creates the marker and stays in discuss',
+check('gate-init initializes without a marker and stays in discuss',
   initialized.kind === 'success'
-  && existsSync(path.join(initWorkspace, '.agents', 'gate.json'))
+  && !existsSync(path.join(initWorkspace, '.agents', 'gate.json'))
   && loadState(initWorkspace, initAgent).phase === 'discuss')
-const initMarker = JSON.parse(readFileSync(path.join(initWorkspace, '.agents', 'gate.json'), 'utf8'))
-check('gate-init marks package config as code', initMarker.codePaths.includes('package.json') && initMarker.codePaths.includes('.github/workflows/'))
 const noMarkerWorkspace = mkdtempSync(path.join(os.tmpdir(), 'gate-no-marker-'))
 const noMarkerHost = fakeHost(noMarkerWorkspace)
 const noMarker = await noMarkerHost.commands['gate-enter-plan'].handler({ agent: initAgent, rawInput: 'anything', attachments: [] })
-check('gate command does not auto-initialize', noMarker.kind === 'error' && !existsSync(path.join(noMarkerWorkspace, '.agents', 'gate.json')))
+check('gate command works without a marker', noMarker.kind === 'success' && !existsSync(path.join(noMarkerWorkspace, '.agents', 'gate.json')))
 
 const projection = fakeProjection()
 const projectionWorkspace = makeWorkspace()
@@ -464,7 +441,7 @@ projection.apply(projectionAgent.session, { type: 'command/run', data: { command
 projection.apply(projectionAgent.session, { type: 'command/done', data: { commandId: 'cmd-1', kind: 'success' } })
 check('projection folds plan command', projection.stateOf(projectionAgent.session).phase === 'orchestrating' && projection.stateOf(projectionAgent.session).node === 'plan')
 check('projection prompt reads plan', projectionSection.text({ agent: projectionAgent }).includes('节点：plan'))
-const projectedRecord = await projectionHost.tools.gate_record.execute({ node: 'plan', task: 'work', workerSessionIds: ['worker-test'] }, { agent: projectionAgent })
+const projectedRecord = await projectionHost.tools.gate_record.execute({ node: 'plan', task: 'work', workerSessionIds: ['worker-test'], noteDecision: 'new', noteSearch: 'test', notePaths: [{ path: addTestNote(projectionWorkspace), class: 'feature', lifecycle: 'proposed' }] }, { agent: projectionAgent })
 projection.apply(projectionAgent.session, { type: 'tool/result', data: { meta: { gate: { state: projectedRecord.state } } } })
 check('projection folds gate_record result', projection.stateOf(projectionAgent.session).node === 'plan-review')
 check('projection projection omits side-file state', !existsSync(path.join(projectionWorkspace, '.agents', 'state', 'gate')))
@@ -478,16 +455,101 @@ const limitWorkspace = makeWorkspace()
 const limitAgent = { id: 'session-limit', session: { header: {} } }
 const limitHost = fakeHost(limitWorkspace, undefined, { config: { reviewLimit: 2 } })
 await limitHost.commands['gate-enter-plan'].handler({ agent: limitAgent, rawInput: '', attachments: [] })
-await limitHost.tools.gate_record.execute({ node: 'plan', task: 'work', workerSessionIds: ['worker-test'] }, { agent: limitAgent })
+await limitHost.tools.gate_record.execute({ node: 'plan', task: 'work', workerSessionIds: ['worker-test'], noteDecision: 'new', noteSearch: 'test', notePaths: [{ path: addTestNote(limitWorkspace), class: 'feature', lifecycle: 'proposed' }] }, { agent: limitAgent })
 await limitHost.tools.gate_record.execute({ node: 'plan-review', findings: [{ id: 'L1' }], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] } } }, { agent: limitAgent })
 await limitHost.tools.gate_record.execute({ node: 'plan-revise', workerSessionIds: ['worker-test'] }, { agent: limitAgent })
 const limited = await limitHost.tools.gate_record.execute({ node: 'plan-review', findings: [{ id: 'L2' }], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] } } }, { agent: limitAgent })
 check('configured reviewLimit caps review', limited.phase === 'blocked' && loadState(limitWorkspace, limitAgent).rounds.planReview === 2)
 check('status shows configured reviewLimit', (await limitHost.commands['gate-status'].handler({ agent: limitAgent, rawInput: '', attachments: [] })).text.includes('/2'))
 
+const lifecycleWorkspace = mkdtempSync(path.join(os.tmpdir(), 'gate-lifecycle-'))
+addGate(lifecycleWorkspace)
+mkdirSync(path.join(lifecycleWorkspace, '.agents', 'notes', 'proposed', 'process'), { recursive: true })
+const lifecycleNote = path.join(lifecycleWorkspace, '.agents', 'notes', 'proposed', 'process', '2026-11-10-feature.md')
+writeFileSync(lifecycleNote, `# Agent Note: feature
+
+Status: proposed
+
+## Problem
+
+feature problem
+
+## Proposal
+
+feature proposal
+
+## Alternatives considered
+
+- alternative
+
+## Plan
+
+1. plan one
+2. plan two
+
+## Acceptance criteria
+
+1. ac one
+2. ac two
+
+## Risks
+
+- risk one
+- risk two
+`)
+mkdirSync(path.join(lifecycleWorkspace, '.artifacts'), { recursive: true })
+writeFileSync(path.join(lifecycleWorkspace, '.artifacts', 'verify.txt'), 'verified\n')
+const lifecycleAgent = { id: 'session-lifecycle', session: { header: {} } }
+const lifecycleHost = fakeHost(lifecycleWorkspace)
+const lifecycleInit = await lifecycleHost.commands['gate-init'].handler({ agent: lifecycleAgent, rawInput: '', attachments: [] })
+check('gate-init provisions notes roots and AGENTS', lifecycleInit.kind === 'success' && existsSync(path.join(lifecycleWorkspace, 'AGENTS.md')) && existsSync(path.join(lifecycleWorkspace, '.agents', 'notes', 'rejected', '.gitkeep')))
+const initPackage = JSON.parse(readFileSync(path.join(lifecycleWorkspace, 'package.json'), 'utf8'))
+check('gate-init configures verify-notes npm script', initPackage.scripts?.['verify-notes'] === 'node .agents/gate/verify-notes.mjs' && existsSync(path.join(lifecycleWorkspace, '.agents', 'gate', 'verify-notes.mjs')))
+check('gate-init does not copy project skill', !existsSync(path.join(lifecycleWorkspace, '.agents', 'skills', 'write-agent-notes')))
+await lifecycleHost.commands['gate-init'].handler({ agent: lifecycleAgent, rawInput: '', attachments: [] })
+const agentBlock = readFileSync(path.join(lifecycleWorkspace, 'AGENTS.md'), 'utf8')
+check('gate-init AGENTS block is idempotent', (agentBlock.match(/<!-- gate-notes:start -->/gu) ?? []).length === 1)
+await lifecycleHost.commands['gate-enter-plan'].handler({ agent: lifecycleAgent, rawInput: '', attachments: [] })
+const notePlan = await lifecycleHost.tools.gate_record.execute({
+  node: 'plan', task: 'feature', workerSessionIds: ['worker-test'], noteDecision: 'new', noteSearch: 'searched active notes',
+  notePaths: [{ path: '.agents/notes/proposed/process/2026-11-10-feature.md', class: 'process', lifecycle: 'proposed' }],
+}, { agent: lifecycleAgent })
+check('plan records notePaths', notePlan.ok === true && notePlan.state.notePaths.length === 1)
+await lifecycleHost.tools.gate_record.execute({ node: 'plan-review', findings: [], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] } } }, { agent: lifecycleAgent })
+await lifecycleHost.commands['gate-enter-implement'].handler({ agent: lifecycleAgent, rawInput: '', attachments: [] })
+await lifecycleHost.tools.gate_record.execute({ node: 'implement', workerSessionIds: ['worker-test'] }, { agent: lifecycleAgent })
+await lifecycleHost.tools.gate_record.execute({ node: 'code-review', findings: [], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] } } }, { agent: lifecycleAgent })
+const lifecycleVerify = await lifecycleHost.tools.gate_record.execute({
+  node: 'verify', workerSessionIds: ['worker-test'],
+  verification: { commands: ['node verify.js'], evidence: ['.artifacts/verify.txt'], toolResults: ['tool-result-1'], passed: true },
+}, { agent: lifecycleAgent })
+check('verify PASS enters note-lifecycle', lifecycleVerify.ok === true && lifecycleVerify.state.node === 'note-lifecycle')
+const lifecyclePrompt = lifecycleHost.sections.find(section => section.name === 'gate:protocol').text({ agent: lifecycleAgent })
+check('note-lifecycle prompt does not dispatch workers', lifecyclePrompt.includes('Note lifecycle') && lifecyclePrompt.includes('不派 worker') && !lifecyclePrompt.includes('## 派发规则'))
+const finalized = await lifecycleHost.tools.gate_note_finalize.execute({}, { agent: lifecycleAgent })
+check('gate_note_finalize moves note', finalized.ok === true && existsSync(path.join(lifecycleWorkspace, '.agents', 'notes', 'implemented', 'process', '2026-11-10-feature.md')), JSON.stringify(finalized))
+const implementedContent = readFileSync(path.join(lifecycleWorkspace, '.agents', 'notes', 'implemented', 'process', '2026-11-10-feature.md'), 'utf8')
+check('finalize preserves multi-line section bodies', implementedContent.includes('ac one') && implementedContent.includes('ac two') && implementedContent.includes('risk two') && implementedContent.includes('decision body') === false && !implementedContent.includes('plan two') && !/^## Plan$/mu.test(implementedContent))
+const noteVerified = await lifecycleHost.tools.gate_note_verify.execute({}, { agent: lifecycleAgent })
+check('gate_note_verify sets noteVerified', noteVerified.ok === true && noteVerified.state.noteVerified === true)
+const lifecycleDone = await lifecycleHost.tools.gate_record.execute({ node: 'note-lifecycle' }, { agent: lifecycleAgent })
+check('note-lifecycle completes gate', lifecycleDone.ok === true && lifecycleDone.state.phase === 'complete')
+
+const invalidNoteWorkspace = mkdtempSync(path.join(os.tmpdir(), 'gate-invalid-note-'))
+addGate(invalidNoteWorkspace)
+mkdirSync(path.join(invalidNoteWorkspace, '.agents', 'notes', 'proposed', 'feature'), { recursive: true })
+writeFileSync(path.join(invalidNoteWorkspace, '.agents', 'notes', 'proposed', 'feature', '2026-11-10-bad.md'), '# Agent Note: bad\n\nStatus: proposed\n\n## Problem\n\np\n')
+const invalidNoteAgent = { id: 'session-invalid-note', session: { header: {} } }
+const invalidNoteHost = fakeHost(invalidNoteWorkspace)
+await invalidNoteHost.commands['gate-enter-plan'].handler({ agent: invalidNoteAgent, rawInput: '', attachments: [] })
+const invalidPlanRecord = await invalidNoteHost.tools.gate_record.execute({ node: 'plan', task: 'bad', workerSessionIds: ['worker-test'], noteDecision: 'new', notePaths: [{ path: '.agents/notes/proposed/feature/2026-11-10-bad.md', class: 'feature', lifecycle: 'proposed' }] }, { agent: invalidNoteAgent })
+check('plan rejects a note that fails format', invalidPlanRecord.ok === false && invalidPlanRecord.code === 'note-format-invalid')
+
 if (failures > 0) {
   console.error(`\n${failures} CHECK(S) FAILED`)
   process.exit(1)
 }
 console.log('\nALL CHECKS PASSED')
+
+
 

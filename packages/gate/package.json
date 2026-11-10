@@ -13,6 +13,7 @@
     "index.js",
     "src/",
     "skills/",
+    "launchers/",
     "cordis.patch.yml",
     "README.md",
     "locale/*.json",

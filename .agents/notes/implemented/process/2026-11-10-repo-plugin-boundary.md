@@ -69,8 +69,8 @@ Status: implemented
 ### 4. 边界规则
 
 1. `packages/gate/**` 在运行时只能读取包内资源，以及被 gate 的项目工作区、marker、state；不得读取仓库 `.agents/`、`docs/`、`AGENTS.md`。
-2. 项目级资源（例如目标项目自己的 `write-agent-notes`）从 gate root 或显式 Config 解析；缺失时给出可诊断错误或降级，不得回退到插件仓库路径。**计划（2026-11-10，尚未实现）**：`write-agent-notes` 将由插件内置 `gate-write-agent-notes`，项目级同名技能不再解析；其余项目级资源规则不变。实现落地后本节随代码同批更新。见 [内置 write-agent-notes 与 Verify 后 lifecycle](../../proposed/process/2026-11-10-gate-notes-builtin-lifecycle.md)。
-3. 仓库级 `.agents/`、`docs/`、`AGENTS.md`、`deepseek-harness/` 永不进入包 `files`，也不作为运行时路径。**计划（2026-11-10，尚未实现）**：内置 vendor 副本将由同步脚本从仓库 `.agents` 生成到 `packages/gate/assets`；当前 assets/scripts 尚不存在，实现前不进入包。插件运行时只读包内 assets，不读取仓库源。
+2. 项目级资源（例如目标项目自己的 `write-agent-notes`）从 gate root 或显式 Config 解析；缺失时给出可诊断错误或降级，不得回退到插件仓库路径。**2026-11-10 已实现**：`write-agent-notes` 由插件内置 `gate-write-agent-notes`，项目级同名技能不再解析；其余项目级资源规则不变。见 [内置 write-agent-notes 与 Verify 后 lifecycle](./2026-11-10-gate-notes-builtin-lifecycle.md)。
+3. 仓库级 `.agents/`、`docs/`、`AGENTS.md`、`deepseek-harness/` 永不进入包 `files`，也不作为运行时路径。**2026-11-10 已实现**：插件内置 notes 方法位于 `packages/gate/assets`，运行时只读包内资源；仓库 `.agents` 仅开发期治理。插件运行时只读包内 assets，不读取仓库源。
 4. 根 `package.json` 不是 bundle；`packages/gate/package.json` 是唯一 bundle manifest；`cordis.patch.yml` 只在包内。
 5. 文档属主：根 `README.md` 是仓库总览；`packages/gate/README.md` 是插件命令、安装与限制；`docs/AGENTS.md` 是仓库文档地图；`.agents/notes/` 是决定与设计。
 6. 仓库 `AGENTS.md`、`GATES.md` 不是插件运行时契约。若本仓库自举启用 gate，另加一句仓库级集成说明，明确 `/gate-*` 是本仓库的运行时门禁；插件不解析仓库授权短语。
@@ -111,3 +111,5 @@ Status: implemented
 - 文档属主已同步：根 `README.md` 是仓库总览，`packages/gate/README.md` 是插件用户文档，`docs/AGENTS.md` 与根 `AGENTS.md` 写明仓库/插件边界。
 - 代价与风险：移动到 `packages/gate` 后 `REPO_ROOT = ../../..` 恰好回到仓库根，`NOTE_SKILL` 在本仓库会“看起来正常”；这不是修复，P0 必须移除对仓库 `.agents` 的依赖，否则安装后仍坏。profile 仍 link 旧 `@dsh-nove/gate`；本仓库的 `install_bundle` 目标变为 `packages/gate`，迁移需要手动重装或重启。
 - P0 与 B 的 proposed Note 已存在，但尚未实施/评审通过；本 Note 只固定边界，不代表插件行为已经修好。
+
+
