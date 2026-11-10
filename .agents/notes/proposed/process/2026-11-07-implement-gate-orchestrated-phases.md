@@ -2,6 +2,8 @@
 
 Status: proposed
 
+> 2026-11-10 Note [内置 write-agent-notes 与 Verify 后 lifecycle](./2026-11-10-gate-notes-builtin-lifecycle.md) 计划部分取代本页的“插件不复制 write-agent-notes”约束：“唯一载体”仍然成立；write-agent-notes 改为插件内置 vendor，项目仍不复制。
+
 工作项：把 `gate-planning` 与 `proposal.md`、`rfc.md`、`write-agent-notes` 整合；工作项与技术设计由同一份 proposed Agent Note 承接。
 
 ## Problem
@@ -21,7 +23,7 @@ Status: proposed
 | `.agents/skills/planning/proposal.md` | 工作项内容：why、范围、产品合同、验收、决定、评审/批准证据 | 用于同一份 proposed Agent Note 的工作项内容 |
 | `.agents/skills/planning/rfc.md` | 技术设计：备选、技术决定、边界、验证切入点 | 用于同一份 Note 的 Design 自由节 |
 | `.agents/skills/write-agent-notes/SKILL.md` | Note 路径、分类、格式、生命周期、校验 | 唯一 Note 容器规则 |
-| `.agents/skills/write-agent-notes/templates/proposed.md` | proposed Note 模板 | 唯一模板；插件不复制 |
+| `.agents/skills/write-agent-notes/templates/proposed.md` | proposed Note 模板 | 唯一模板；2026-11-10 Note 改为插件内置 vendor，项目不复制 |
 | `.agents/skills/planning/review.md` | 三轴评审、合同/设计检查、通过条件 | `gate-plan-review` 只报告；planning 决定与修正 |
 
 ## Proposal
@@ -128,12 +130,14 @@ packages/gate/index.js（协议说明）
 packages/gate/skills/gate-planning/spec.md
 ```
 
-不新增：
+不新增项目级副本：
 
 ```text
 proposal-template.md
-write-agent-notes 副本
+write-agent-notes 项目副本
 ```
+
+2026-11-10 Note 改为插件内置 vendor；项目仍不复制。
 
 ### 7. proposal.md 适配
 
@@ -147,7 +151,7 @@ write-agent-notes 副本
 - 不修改 `.agents/skills`；
 - 不修改旧 `implement-gate`；
 - 不新增模板；
-- 不把 Note 生命周期写进 planning。
+- 不把 Note 生命周期写进 planning；lifecycle 由 2026-11-10 Note 的独立 `note-lifecycle` 节点承接。
 
 ## Alternatives considered
 
