@@ -126,7 +126,7 @@ const record = async args => {
     withWorkers = { ...withWorkers, noteDecision: 'new', noteSearch: 'test search', notePaths: [{ path: notePath, class: 'feature', lifecycle: 'proposed' }] }
   }
   const withAxes = ['plan-review', 'code-review', 'review'].includes(args.node) && withWorkers.reviewAxes === undefined
-    ? { ...withWorkers, reviewAxes: { standards: { findings: [] }, spec: { findings: [] } } }
+    ? { ...withWorkers, reviewAxes: { standards: { findings: [] }, spec: { findings: [] }, ...(args.node === 'plan-review' ? { architecture: { findings: [] } } : {}) } }
     : withWorkers
   const withToolResults = args.node === 'verify' && withAxes.verification !== undefined && withAxes.verification.toolResults === undefined
     ? { ...withAxes, verification: { ...withAxes.verification, toolResults: ['tool-result-1'] } }
@@ -175,6 +175,8 @@ check('plan record requires task', noTask.ok === false && noTask.code === 'task-
 check('plan review can start', (await record({ node: 'plan', task: 'work' })).ok === true && stateOf().node === 'plan-review')
 const noAxes = await host.tools.gate_record.execute({ node: 'plan-review', findings: [], workerSessionIds: ['worker-test'] }, { agent, signal: new AbortController().signal })
 check('review requires standards and spec axes', noAxes.ok === false && noAxes.code === 'review-axes-required')
+const noArchitecture = await host.tools.gate_record.execute({ node: 'plan-review', findings: [], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] } } }, { agent, signal: new AbortController().signal })
+check('plan review requires architecture axis', noArchitecture.ok === false && noArchitecture.code === 'review-axes-required')
 check('empty plan review returns to discuss', (await record({ node: 'plan-review', findings: [] })).phase === 'discuss')
 check('clean plan review sets planReady', stateOf().planReady === true)
 
@@ -265,6 +267,10 @@ await run('gate-code-review', 'src/x.ts')
 check('standalone code review enters reviewing', stateOf().phase === 'reviewing' && stateOf().node === 'review')
 check('standalone review denies writes', (await exec('write', { file_path: 'src/x.ts' })).kind === 'deny')
 check('standalone review ends in discuss', (await record({ node: 'review', findings: [] })).phase === 'discuss')
+await run('gate-code-review', '')
+check('code review works without an explicit work item', stateOf().phase === 'reviewing' && typeof stateOf().task === 'string' && stateOf().task.length > 0)
+await run('gate-return-discuss')
+check('return-discuss clears the work item', stateOf().task === null && stateOf().planReady === false)
 
 await run('gate-block', 'manual pause')
 check('block freezes the gate', stateOf().phase === 'blocked' && stateOf().work === 'blocked')
@@ -316,7 +322,7 @@ const implementWakeHost = fakeHost(implementWakeWorkspace)
 saveState(implementWakeWorkspace, implementWakeAgent, { ...defaultState(), phase: 'discuss', task: 'work', planReady: true, noteDecision: 'new', notePaths: [{ path: addTestNote(implementWakeWorkspace), class: 'feature', lifecycle: 'proposed' }] })
 await implementWakeHost.commands['gate-enter-implement'].handler({ agent: implementWakeAgent, rawInput: '', attachments: [] })
 const implementWakeText = implementWakeMessages[0]?.content?.[0]?.text ?? ''
-check('implement wake names review, verify and lifecycle steps', implementWakeText.includes('gate-code-review') && implementWakeText.includes('gate-verify') && implementWakeText.includes('note-lifecycle'))
+check('implement wake names review, verify and lifecycle steps', implementWakeText.includes('gate-implementation-review') && implementWakeText.includes('gate-verify') && implementWakeText.includes('note-lifecycle'))
 
 const restrictionCalls = []
 let restrictionDisposals = 0
@@ -456,9 +462,9 @@ const limitAgent = { id: 'session-limit', session: { header: {} } }
 const limitHost = fakeHost(limitWorkspace, undefined, { config: { reviewLimit: 2 } })
 await limitHost.commands['gate-enter-plan'].handler({ agent: limitAgent, rawInput: '', attachments: [] })
 await limitHost.tools.gate_record.execute({ node: 'plan', task: 'work', workerSessionIds: ['worker-test'], noteDecision: 'new', noteSearch: 'test', notePaths: [{ path: addTestNote(limitWorkspace), class: 'feature', lifecycle: 'proposed' }] }, { agent: limitAgent })
-await limitHost.tools.gate_record.execute({ node: 'plan-review', findings: [{ id: 'L1' }], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] } } }, { agent: limitAgent })
+await limitHost.tools.gate_record.execute({ node: 'plan-review', findings: [{ id: 'L1' }], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] }, architecture: { findings: [] } } }, { agent: limitAgent })
 await limitHost.tools.gate_record.execute({ node: 'plan-revise', workerSessionIds: ['worker-test'] }, { agent: limitAgent })
-const limited = await limitHost.tools.gate_record.execute({ node: 'plan-review', findings: [{ id: 'L2' }], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] } } }, { agent: limitAgent })
+const limited = await limitHost.tools.gate_record.execute({ node: 'plan-review', findings: [{ id: 'L2' }], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] }, architecture: { findings: [] } } }, { agent: limitAgent })
 check('configured reviewLimit caps review', limited.phase === 'blocked' && loadState(limitWorkspace, limitAgent).rounds.planReview === 2)
 check('status shows configured reviewLimit', (await limitHost.commands['gate-status'].handler({ agent: limitAgent, rawInput: '', attachments: [] })).text.includes('/2'))
 
@@ -515,10 +521,10 @@ const notePlan = await lifecycleHost.tools.gate_record.execute({
   notePaths: [{ path: '.agents/notes/proposed/process/2026-11-10-feature.md', class: 'process', lifecycle: 'proposed' }],
 }, { agent: lifecycleAgent })
 check('plan records notePaths', notePlan.ok === true && notePlan.state.notePaths.length === 1)
-await lifecycleHost.tools.gate_record.execute({ node: 'plan-review', findings: [], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] } } }, { agent: lifecycleAgent })
+await lifecycleHost.tools.gate_record.execute({ node: 'plan-review', findings: [], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] }, architecture: { findings: [] } } }, { agent: lifecycleAgent })
 await lifecycleHost.commands['gate-enter-implement'].handler({ agent: lifecycleAgent, rawInput: '', attachments: [] })
 await lifecycleHost.tools.gate_record.execute({ node: 'implement', workerSessionIds: ['worker-test'] }, { agent: lifecycleAgent })
-await lifecycleHost.tools.gate_record.execute({ node: 'code-review', findings: [], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] } } }, { agent: lifecycleAgent })
+await lifecycleHost.tools.gate_record.execute({ node: 'code-review', findings: [], workerSessionIds: ['worker-test'], reviewAxes: { standards: { findings: [] }, spec: { findings: [] }, architecture: { findings: [] } } }, { agent: lifecycleAgent })
 const lifecycleVerify = await lifecycleHost.tools.gate_record.execute({
   node: 'verify', workerSessionIds: ['worker-test'],
   verification: { commands: ['node verify.js'], evidence: ['.artifacts/verify.txt'], toolResults: ['tool-result-1'], passed: true },
@@ -550,6 +556,8 @@ if (failures > 0) {
   process.exit(1)
 }
 console.log('\nALL CHECKS PASSED')
+
+
 
 
 

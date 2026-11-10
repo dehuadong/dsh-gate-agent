@@ -19,7 +19,7 @@ Host 插件：按阶段控制 agent 的写入与评审流程，提供 `/gate-*` 
 | `/gate-enter-plan [需求/约束]` | 可选 | 进入 `orchestrating/plan`；用户输入随 follow-up 交给 planning |
 | `/gate-enter-implement [实施约束]` | 可选 | 进入 `orchestrating/implement`；复用已通过 planning 的 task |
 | `/gate-docs` | 无 | 文档治理，不调用技能 |
-| `/gate-code-review <范围>` | 范围 | 单独只读 code review，只输出 findings |
+| `/gate-code-review [范围]` | 可选 | 单独只读 code review，只输出 findings；无参数时按上下文确定范围 |
 | `/gate-note-verify` | 无 | 只读检查 notes tree/format/lifecycle/archived |
 | `/gate-note-seal` | 无 | 用户确认后为 archived notes 生成 manifest |
 | `/gate-block [原因]` | 可选 | 手动冻结当前阶段 |
@@ -141,7 +141,8 @@ gate_record({
 - `node`：`plan`、`plan-review`、`plan-revise`、`implement`、`code-review`、`implement-revise`、`verify`、`docs`、`review`。
 - `plan` 必须带 `task`。
 - worker 节点必须带 `workerSessionIds`；id 必须是当前 root 的 subagent tree child 且已 settled，否则拒绝推进。
-- review 节点必须带 `reviewAxes.standards` 与 `reviewAxes.spec`；缺一轴不能通过 review。
+- `plan-review` 必须带 `reviewAxes.standards`、`reviewAxes.spec`、`reviewAxes.architecture` 三轴；`code-review`/`review` 必须带 `standards` 与 `spec` 两轴；缺轴不能通过 review。
+- 每个轴的 `reviewAxes.<axis>.findings` 必须是数组；`workerSessionIds` 与实际派发的 review worker 数量一致，由主 agent 按规模决定。
 - `requiresDiscussion=true`：进入 `blocked`，`blockReason=needs-user-decision`；用户 `/gate-resume` 后继续 discuss。
 - review 达到 `reviewLimit` 仍有 findings：进入 blocked，设置 `exhausted.plan/code`；不能靠重新 `/gate-enter-implement` 绕过。
 
@@ -184,6 +185,7 @@ gate_record({
 - verify 的 `toolResults` 会用 `sessionQuery.readSession` 在 worker session log 中绑定到真实 `tool/result` callId；`commands`/`evidence` 仍是主代理转述，不能当成完整独立执行证明。
 - `ctx.tools.restrict` 只掩全局工具；scoped 写工具仍可能出现在工具面，硬拒绝由 `ctx.tools.guard` 保证。
 - 旧 gate 迁移仍属后续 B 工作项；session projection、guard/restrict/sandbox、worker tree 证据与 review axes 已在 T1/T2/T3 实现。
+
 
 
 

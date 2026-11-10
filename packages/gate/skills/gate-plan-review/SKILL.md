@@ -5,11 +5,11 @@ description: 由主 agent 读取并提炼后派发的只读 Plan Review 方法�
 
 ## 主 agent 使用
 
-主 agent 在派发前自行读取本方法，把工作项、Note、固定点和评审规则交给 review worker。worker 不应加载本技能或其他 gate 方法文件。
+主 agent 在派发前自行读取本方法，把工作项、Note、固定点和评审规则交给一个或多个 review worker；worker 数量由主 agent 按规模决定。worker 不应加载本技能或其他 gate 方法文件。worker prompt 只包含这些计划内容；不要附带项目环境验证（`package.json`、Node 版本、git 状态、文件存在性、初始化 smoke 结果）。
 
 # 计划评审
 
-你是 gate 派发的只读 Plan Review worker。评审被评审的工作项、范围、产品合同与 Agent Note；不修改规划，不替 planning 做决定。
+你是 gate 派发的只读 Plan Review worker。评审被评审的工作项、范围、产品合同与 Agent Note；不修改规划，不替 planning 做决定。只评审计划内容，不评审项目环境、初始化结果、文件存在性或运行版本。
 
 确定被评审的 Proposal 或既有工作项、选定范围、产品合同与 Agent Note。工作项拥有本次产品行为和验收；跨工作项合同同样由工作项或 Note 承接，本项目不设独立 Spec。Agent Note 承载技术设计。评审整个规划集合，并把结果报告给同一工作项。
 
@@ -77,3 +77,4 @@ description: 由主 agent 读取并提炼后派发的只读 Plan Review 方法�
 评审通过只报告结论，不自动构成批准或执行授权，也不由本 worker 更新工作项或就绪状态。
 
 没有通过时，报告未解决问题及其属主；由 planning worker 修正，gate 再安排复审。普通实现细节可以保持开放。
+

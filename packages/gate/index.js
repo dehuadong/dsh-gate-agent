@@ -21,7 +21,7 @@ const NOTES_AGENTS_TEXT = `${NOTES_BLOCK_START}
 3. 被放弃的方案先写最强理由再否决。
 4. 提交前运行 \`npm run verify-notes\` 检查；gate 会话内也可用 \`/gate-note-verify\`。gate 的 lifecycle 由 \`gate_note_finalize\` → \`gate_note_verify\` → \`gate_record({node:'note-lifecycle'})\` 完成。
 ${NOTES_BLOCK_END}`
-const SKILL_NAMES = ['gate-planning', 'gate-plan-review', 'gate-implement', 'gate-code-review', 'gate-verify', 'gate-write-agent-notes']
+const SKILL_NAMES = ['gate-planning', 'gate-plan-review', 'gate-implement', 'gate-implementation-review', 'gate-verify', 'gate-write-agent-notes']
 const DEFAULT_REVIEW_LIMIT = 5
 
 const SCHEMASTERY = Symbol.for('schemastery')
@@ -87,10 +87,11 @@ export const PLAN_ORCHESTRATION = `## /gate-enter-plan 编排
 notePaths 是 [{path,class,lifecycle}] 数组；mechanical:<说明> 用 noteDecision:'mechanical' 且 notePaths 为空。
 
 ## Step 2 — Plan Review
-主 agent 加载技能 gate-plan-review，派一个只读 review worker；给它任务、Note 和评审方法。
+主 agent 加载技能 gate-plan-review；按任务规模和风险自行决定派一个或多个只读 review worker，覆盖 Standards、Spec、Architecture 三轴。
+给 worker 工作项、Note、固定点和评审方法；不要在 review worker prompt 中附带项目环境验证（package.json、Node 版本、git 状态、文件存在性、初始化 smoke 结果）。
 完成后调 gate_record({node:'plan-review',findings,reviewAxes,workerSessionIds,requiresDiscussion})。
-reviewAxes 必须包含 standards 与 spec 两轴。
-需要用户决定：进入 blocked，等待 /gate-resume；仍有 findings：重新加载 gate-planning，派 revise，再 review。
+reviewAxes 必须包含 standards、spec、architecture 三轴。
+需要用户决定：进入 blocked，等待 /gate-resume；仍有 findings：重新加载 gate-planning，只带 findings 和 Note 路径派 revise，再 review。
 
 ## Step 3 — 回到 Discuss
 review 为空时回到 discuss，planReady=true。
@@ -105,7 +106,7 @@ worker 不加载 gate 技能。
 完成后调 gate_record({node:'implement', workerSessionIds})。
 
 ## Step 2 — Implementation Review
-主 agent 加载技能 gate-code-review，派一个只读 review worker，同时覆盖 Standards 与 Spec 两轴。
+主 agent 加载技能 gate-implementation-review；按改动规模自行决定派一个或多个只读 review worker，覆盖 Standards 与 Spec 两轴。
 完成后调 gate_record({node:'code-review', findings, reviewAxes, workerSessionIds})。
 审查要求满足后继续 Step 3，无需再次授权。
 实现中发现范围外问题、合同变化或需要重新讨论时，worker 停止并返回 receipt；主 agent 向用户说明，使用 gate_record 的 requiresDiscussion 或提示用户执行 /gate-return-discuss。不要停在 implement 里继续扩大范围。
@@ -180,7 +181,7 @@ function phaseMethod(node) {
   if (node === 'plan' || node === 'plan-revise') return '`gate-planning` + `gate-write-agent-notes`'
   if (node === 'plan-review') return '`gate-plan-review`'
   if (node === 'implement' || node === 'implement-revise') return '`gate-implement`'
-  if (node === 'code-review' || node === 'review') return '`gate-code-review` (one skill, both axes)'
+  if (node === 'code-review' || node === 'review') return '`gate-implementation-review` (one skill, both axes)'
   if (node === 'verify') return '`gate-verify`'
   if (node === 'note-lifecycle') return '`gate-write-agent-notes`（lifecycle 工具，不是 worker）'
   return '无'
@@ -878,8 +879,9 @@ function validateNotePaths(root, value, decision) {
 function reviewAxesError(args) {
   if (!REVIEW_NODES.has(args.node)) return undefined
   const axes = args.reviewAxes
-  if (axes === null || typeof axes !== 'object' || Array.isArray(axes)) return { code: 'review-axes-required', reason: 'review 节点需要 standards 与 spec 两轴结果。' }
-  for (const axis of ['standards', 'spec']) {
+  const required = args.node === 'plan-review' ? ['standards', 'spec', 'architecture'] : ['standards', 'spec']
+  if (axes === null || typeof axes !== 'object' || Array.isArray(axes)) return { code: 'review-axes-required', reason: `review 节点需要 ${required.join('、')} 轴结果。` }
+  for (const axis of required) {
     const value = axes[axis]
     if (value === null || typeof value !== 'object' || Array.isArray(value) || !Array.isArray(value.findings)) {
       return { code: 'review-axes-required', reason: `${axis} 轴需要 findings 数组。` }
@@ -1053,7 +1055,7 @@ export function apply(ctx, config = {}) {
       const result = enterPhase(ctx, invocation.agent, 'implement', reviewLimit, store)
       if (result.kind === 'error') return result
       const brief = String(invocation.rawInput ?? '').trim()
-      wakeGateAgent(invocation, `Gate 已进入 implement：${result.state.task ?? ''}。用户实施约束：${brief === '' ? '（无额外约束）' : brief}。按 Gate 编排 Step 1 加载 gate-implement，派 implement worker；Step 2 加载 gate-code-review 做两轴 Implementation Review；Step 3 加载 gate-verify 做最终验收；Verify PASS 后 Step 4 进入 note-lifecycle，执行 gate_note_finalize → gate_note_verify → gate_record({node:"note-lifecycle"})。`, 'gate-enter-implement')
+      wakeGateAgent(invocation, `Gate 已进入 implement：${result.state.task ?? ''}。用户实施约束：${brief === '' ? '（无额外约束）' : brief}。按 Gate 编排 Step 1 加载 gate-implement，派 implement worker；Step 2 加载 gate-implementation-review 做两轴 Implementation Review；Step 3 加载 gate-verify 做最终验收；Verify PASS 后 Step 4 进入 note-lifecycle，执行 gate_note_finalize → gate_note_verify → gate_record({node:"note-lifecycle"})。`, 'gate-enter-implement')
       return { kind: 'success', text: `进入 implement：${result.state.task}\n主代理按 Step 1-4 执行：implement → code-review → verify → note-lifecycle。` }
     }, { hint: '[实施约束]' })
     register('gate-docs', '开始文档治理', async invocation => {
@@ -1067,16 +1069,16 @@ export function apply(ctx, config = {}) {
       return { kind: 'success', text: '进入 docs：文档治理' }
     }, null)
     register('gate-code-review', '开始独立只读 code review', async invocation => {
-      const task = String(invocation.rawInput ?? '').trim()
-      if (task === '') return { kind: 'error', text: '缺少审查范围' }
+      const brief = String(invocation.rawInput ?? '').trim()
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
       if (state.phase !== 'discuss' && state.phase !== 'complete') return { kind: 'error', text: `当前 phase 是 ${state.phase}` }
       if (state.work === 'blocked' || state.blockReason !== null) return { kind: 'error', text: `当前被 blocked：${state.blockReason ?? 'unknown'}；先 /gate-resume` }
-      state.phase = 'reviewing'; state.task = task; state.node = 'review'; state.work = 'active'; state.blockReason = null; state.blockedFrom = null
+      const scope = brief === '' ? (state.task ?? '当前上下文中的改动') : brief
+      state.phase = 'reviewing'; state.task = scope; state.node = 'review'; state.work = 'active'; state.blockReason = null; state.blockedFrom = null
       store.write(gate.root, invocation.agent, state)
-      wakeGateAgent(invocation, `Gate 已进入只读 code review：${task}。主 agent 先加载技能 gate-code-review，再派一个 review worker 同时覆盖 standards 与 spec 两轴；完成后 gate_record({node:"review", reviewAxes, workerSessionIds})。`, 'gate-code-review')
-      return { kind: 'success', text: `进入只读 code review：${task}\n主代理加载技能 gate-code-review 并派一个两轴 review worker。` }
+      wakeGateAgent(invocation, `Gate 已进入只读 code review：${scope}。主 agent 先加载技能 gate-implementation-review，再按范围派一个或多个 review worker，覆盖 standards 与 spec 两轴；完成后 gate_record({node:"review", reviewAxes, workerSessionIds})。`, 'gate-code-review')
+      return { kind: 'success', text: `进入只读 code review：${scope}\n主代理加载技能 gate-implementation-review，并按范围派 review worker 覆盖两轴。` }
     })
     register('gate-block', '冻结当前 gate', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
@@ -1106,6 +1108,17 @@ export function apply(ctx, config = {}) {
       const state = store.read(gate.root, invocation.agent)
       if (state.phase === 'blocked') return { kind: 'error', text: `当前 blocked：${state.blockReason ?? 'unknown'}；先 /gate-resume` }
       state.phase = 'discuss'; state.node = null; state.work = 'active'; state.blockReason = null; state.blockedFrom = null
+      state.task = null
+      state.planReady = false
+      state.rounds = { planReview: 0, codeReview: 0 }
+      state.verification = null
+      state.notePaths = []
+      state.noteDecision = null
+      state.noteSearch = null
+      state.noteVerified = false
+      state.noteFinalized = false
+      state.noteFinalizeRecovery = []
+      state.pending = {}
       store.write(gate.root, invocation.agent, state)
       return { kind: 'success', text: '已回到 discuss' }
     }, null)
@@ -1206,7 +1219,11 @@ export function apply(ctx, config = {}) {
 
       const topFindings = Array.isArray(args.findings) ? args.findings : []
       const axesFindings = REVIEW_NODES.has(args.node)
-        ? [...args.reviewAxes.standards.findings, ...args.reviewAxes.spec.findings]
+        ? [
+            ...args.reviewAxes.standards.findings,
+            ...args.reviewAxes.spec.findings,
+            ...(args.node === 'plan-review' ? args.reviewAxes.architecture.findings : []),
+          ]
         : []
       const findings = [...axesFindings, ...topFindings]
       if (args.requiresDiscussion === true) {
@@ -1510,6 +1527,8 @@ export function apply(ctx, config = {}) {
 
 
 }
+
+
 
 
 

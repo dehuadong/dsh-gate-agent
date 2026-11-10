@@ -5,7 +5,7 @@ description: Gate 规划方法：主 agent 读取后提炼任务并派发；work
 
 ## 主 agent 使用
 
-主 agent 在派发前自行读取本方法，给 worker 一份自包含任务：具体工作项、约束和规划规则。worker 不应加载本技能或其他 gate 方法文件。
+主 agent 在派发前自行读取本方法，给 worker 一份自包含任务：具体工作项、约束和规划规则。worker 不应加载本技能或其他 gate 方法文件。worker prompt 只给计划内容；不要附带项目环境验证（`package.json`、Node 版本、git 状态、文件存在性、初始化 smoke 结果）。
 
 # 规划
 

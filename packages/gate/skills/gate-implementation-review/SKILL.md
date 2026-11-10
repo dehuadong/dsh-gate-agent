@@ -1,15 +1,15 @@
 ---
-name: gate-code-review
-description: Gate 代码评审方法：主 agent 读取并提炼后派发；一个 worker 同时评审 Standards 与 Spec 两轴，不拆成两个技能。
+name: gate-implementation-review
+description: Gate 实现评审方法：主 agent 读取后按改动规模决定 worker 数量；方法同时覆盖 Standards 与 Spec 两轴，不拆成两个技能。
 ---
 
 ## 主 agent 使用
 
-主 agent 在派发前自行读取本方法，给一个 review worker：具体改动范围、固定点、验收合同和两轴规则。worker 不应加载本技能或其他 gate 方法文件。
+主 agent 在派发前自行读取本方法，给一个或多个 review worker：具体改动范围、固定点、验收合同和两轴规则；worker 数量由主 agent 按改动规模决定。worker 不应加载本技能或其他 gate 方法文件。
 
 ## 评审方式
 
-对请求的改动范围同时做 **Standards** 与 **Spec** 两轴评审，一次产出两轴结果；不要拆成两个 worker，也不要 spawn 子代理。
+对请求的改动范围同时做 **Standards** 与 **Spec** 两轴评审，一次产出两轴结果；不拆成两个技能。worker 数量由主 agent 决定。
 
 ### 1. 固定评审点
 
@@ -51,4 +51,6 @@ description: Gate 代码评审方法：主 agent 读取并提炼后派发；一�
 ```
 
 两轴 `findings` 为空表示该轴通过。不要修复 findings。
+
+
 
