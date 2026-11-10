@@ -1,0 +1,22 @@
+{
+  "name": "dsh-gate-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Full write gate and phase orchestrator with plugin-local skills.",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "src/",
+    "skills/",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

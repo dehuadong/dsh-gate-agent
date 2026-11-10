@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-gate-agent
+      name: 'dsh-gate-agent'
