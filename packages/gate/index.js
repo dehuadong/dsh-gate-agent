@@ -82,7 +82,7 @@ discuss 是默认阶段，不需要命令进入。
 4. 只对未决的产品、范围、兼容性、成本、风险等价值判断提问。
 5. 不创建提案、Note 或规格文件。
 6. 汇报：已解决事项、剩余未决事项、建议的下一阶段。
-7. 不自行离开 discuss；离开必须由用户显式授权。`
+7. 不自行离开 discuss；离开必须由用户明确授权。授权可以在对话或 ask_user_question 中给出；获得授权后调用 gate_start_phase 进入 plan/implement，不要要求用户再输入 slash command。`
 
 export const PLAN_ORCHESTRATION = `## /gate-enter-plan 编排
 主代理派 worker；gate 不派。
@@ -512,6 +512,10 @@ function sessionCwd(ctx, agent, fallback) {
 }
 
 function statusText(state, reviewLimit = DEFAULT_REVIEW_LIMIT) {
+  const inPlanReview = state.node === 'plan-review'
+  const inCodeReview = state.node === 'code-review'
+  const planRound = (state.rounds?.planReview ?? 0) + (inPlanReview ? 1 : 0)
+  const codeRound = (state.rounds?.codeReview ?? 0) + (inCodeReview ? 1 : 0)
   const lines = [
     `状态：${state.phase}`,
     `节点：${state.node ?? '无'}`,
@@ -520,7 +524,7 @@ function statusText(state, reviewLimit = DEFAULT_REVIEW_LIMIT) {
     `work：${state.work}`,
     `blockReason：${state.blockReason ?? '无'}`,
     `planReady：${state.planReady ? '是' : '否'}`,
-    `rounds：plan ${state.rounds?.planReview ?? 0}/${reviewLimit}, code ${state.rounds?.codeReview ?? 0}/${reviewLimit}`,
+    `rounds：plan ${planRound}/${reviewLimit}${inPlanReview ? '（当前）' : ''}, code ${codeRound}/${reviewLimit}${inCodeReview ? '（当前）' : ''}`,
   ]
   if (state.notePaths?.length > 0 || state.noteDecision === 'mechanical') {
     lines.push(`notes：${state.noteDecision ?? '无'} ${state.notePaths?.length ?? 0} 篇，verified=${state.noteVerified === true ? '是' : '否'}`)
@@ -1259,6 +1263,56 @@ export function apply(ctx, config = {}) {
         return { kind: 'error', text: String(error?.stderr ?? error?.message ?? error).trim() }
       }
     }, null)
+  })
+
+  ctx.tools.register({
+    name: 'gate_start_phase',
+    description: '在用户明确授权后从 discuss/complete 进入 plan 或 implement。仅 root agent 可调用；授权可来自对话或 ask_user_question，不要求用户输入 slash command。',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        node: { type: 'string', enum: ['plan', 'implement'] },
+        brief: { type: 'string' },
+      },
+      required: ['node'],
+    },
+    output: {
+      schema: { type: 'object', additionalProperties: true },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      presentationMeta: (_args, value) => value?.state === undefined ? { gate: {} } : { gate: { state: value.state } },
+    },
+    async execute(args, exec) {
+      const root = rootAgentOf(ctx, exec.agent)
+      if (root?.id !== exec.agent?.id) return { ok: false, code: 'root-only', reason: 'gate_start_phase 只能由 root agent 调用。' }
+      const gate = resolveGate(ctx, exec.agent)
+      const state = store.read(gate.root, exec.agent)
+      if (args.node === 'implement' && state.planReady !== true) {
+        const brief = String(args.brief ?? '').trim()
+        if (brief === '') return { ok: false, code: 'brief-required', reason: '直接 implement 需要一句说明。' }
+        state.task = brief
+        state.planReady = false
+        state.noteDecision = null
+        state.notePaths = []
+        state.noteSearch = null
+        state.noteVerified = false
+        state.noteFinalized = false
+        state.noteFinalizeRecovery = []
+        store.write(gate.root, exec.agent, state)
+      }
+      const result = enterPhase(ctx, exec.agent, args.node, reviewLimit, store)
+      if (result.kind === 'error') return { ok: false, code: 'phase-enter-failed', reason: result.text }
+      return {
+        ok: true,
+        phase: result.state.phase,
+        node: result.state.node,
+        task: result.state.task,
+        state: normalizeState(result.state),
+        message: args.node === 'plan'
+          ? '已进入 plan；加载 gate-planning + gate-write-agent-notes 并派 planning worker。'
+          : '已进入 implement；加载 gate-implement 并派 implement worker。',
+      }
+    },
   })
 
   ctx.tools.register({

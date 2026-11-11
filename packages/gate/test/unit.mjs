@@ -145,6 +145,7 @@ check('docs command registered', typeof host.commands['gate-docs']?.handler === 
 check('status command registered', typeof host.commands['gate-status']?.handler === 'function')
 check('note archive command registered', typeof host.commands['gate-note-archive']?.handler === 'function')
 check('note board command registered', typeof host.commands['gate-note-board']?.handler === 'function')
+check('gate tools declare output schema and render', Object.values(host.tools).every(tool => tool?.output?.schema !== undefined && typeof tool.output.render === 'function'))
 check('discuss denies code', (await exec('write', { file_path: 'src/x.ts' })).kind === 'deny')
 check('discuss denies docs', (await exec('write', { file_path: 'docs/x.md' })).kind === 'deny')
 await run('gate-docs', 'docs/')
@@ -157,6 +158,11 @@ await run('gate-return-discuss')
 check('return enters discuss', stateOf().phase === 'discuss')
 const status = await run('gate-status', '')
 check('status is factual', status.text.includes('状态：discuss') && status.text.includes('blockReason：无') && !status.text.includes('下一步'))
+const roundWorkspace = makeWorkspace()
+const roundHost = fakeHost(roundWorkspace)
+const roundAgent = { id: 'session-round', session: { header: {} } }
+saveState(roundWorkspace, roundAgent, { ...defaultState(), phase: 'orchestrating', node: 'plan-review', rounds: { planReview: 2, codeReview: 0 } })
+check('status counts the current review round', (await roundHost.commands['gate-status'].handler({ agent: roundAgent, rawInput: '', attachments: [] })).text.includes('plan 3/5（当前）'))
 check('discuss protocol is read-only and default', DISCUSS_ORCHESTRATION.includes('discuss 是默认阶段') && DISCUSS_ORCHESTRATION.includes('只读讨论') && !DISCUSS_ORCHESTRATION.includes('/discuss'))
 const gateSection = host.sections.find(section => section.name === 'gate:protocol')
 check('discuss prompt does not claim orchestration', gateSection.text({ agent }).includes('只读讨论') && !gateSection.text({ agent }).includes('编排中'))
@@ -171,6 +177,17 @@ const directHost = fakeHost(directWorkspace)
 const directAgent = { id: 'session-direct', session: { header: {} } }
 const directEnter = await directHost.commands['gate-enter-implement'].handler({ agent: directAgent, rawInput: '把日志级别改成 info', attachments: [] })
 check('implement accepts a simple brief without planning', directEnter.kind === 'success' && loadState(directWorkspace, directAgent).node === 'implement' && loadState(directWorkspace, directAgent).task === '把日志级别改成 info')
+
+const startWorkspace = makeWorkspace()
+const startHost = fakeHost(startWorkspace)
+const startAgent = { id: 'session-start', session: { header: {} } }
+const startedPlan = await startHost.tools.gate_start_phase.execute({ node: 'plan' }, { agent: startAgent })
+check('gate_start_phase starts planning after authorization', startedPlan.ok === true && startedPlan.node === 'plan')
+const startImplWorkspace = makeWorkspace()
+const startImplHost = fakeHost(startImplWorkspace)
+const startImplAgent = { id: 'session-start-impl', session: { header: {} } }
+const startedImplement = await startImplHost.tools.gate_start_phase.execute({ node: 'implement', brief: '修一个错别字' }, { agent: startImplAgent })
+check('gate_start_phase starts direct implement', startedImplement.ok === true && startedImplement.task === '修一个错别字')
 
 await run('gate-enter-plan')
 check('plan command enters orchestrating', stateOf().phase === 'orchestrating' && stateOf().node === 'plan')

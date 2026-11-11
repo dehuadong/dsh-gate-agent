@@ -25,7 +25,7 @@ check('manifest files exclude repository governance',
   !manifest.files.some(entry => entry.startsWith('.agents') || entry === 'docs/' || entry === 'AGENTS.md' || entry === 'deepseek-harness/'))
 
 const patch = readFileSync(path.join(root, 'cordis.patch.yml'), 'utf8')
-check('bundle patch inserts this package', patch.includes('insert:') && patch.includes(manifest.name))
+check('bundle patch declares the developer preset with the package name', patch.includes('insert:') && patch.includes('preset-developer') && patch.includes("'dsh-gate-agent'"))
 check('plugin exports apply and inject', typeof apply === 'function' && Array.isArray(inject) && inject.includes('tools'))
 check('plugin exports a Standard Schema Config', typeof Config?.['~standard']?.validate === 'function')
 check('Config accepts an empty object', Array.isArray(Config['~standard'].validate({}).issues) === false)

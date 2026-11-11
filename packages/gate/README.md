@@ -35,6 +35,8 @@ Host 插件：按阶段控制 agent 的写入与评审流程，提供 `/gate-*` 
 
 进入阶段不等于执行。主代理派发 worker，再用 `gate_record` 推进节点。
 
+离开 discuss 不要求用户输入 slash command：用户在对话或 `ask_user_question` 中明确授权后，主 agent 可调用 `gate_start_phase({node:'plan'|'implement', brief})` 进入阶段。`/gate-enter-plan` / `/gate-enter-implement` 仍是用户直接进入的入口。
+
 Verify PASS 后进入 `note-lifecycle`，完成后回 discuss，不停留在 complete。回 discuss 前执行一次 `git add -A` + `git commit`（非 git 或没有改动跳过；提交失败不切 discuss）：
 
 1. `gate_note_finalize` 把 proposed Note 移到 `implemented/` 并更新头块；
