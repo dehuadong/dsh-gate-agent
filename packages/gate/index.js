@@ -475,7 +475,8 @@ function statusText(state, reviewLimit = DEFAULT_REVIEW_LIMIT) {
   const lines = [
     `状态：${state.phase}`,
     `节点：${state.node ?? '无'}`,
-    `工作项：${state.task ?? '无'}`,
+    `事项：${state.task ?? '无'}`,
+    ...(state.phase === 'blocked' ? [`解冻后：${state.blockedFrom?.phase ?? 'discuss'}${state.blockedFrom?.node === null || state.blockedFrom?.node === undefined ? '' : ` / ${state.blockedFrom.node}`}`] : []),
     `work：${state.work}`,
     `blockReason：${state.blockReason ?? '无'}`,
     `planReady：${state.planReady ? '是' : '否'}`,
@@ -707,16 +708,9 @@ function enterPhase(ctx, agent, node, reviewLimit, store) {
     if (notes === undefined) return { kind: 'error', code: 'notes-builtin-missing', text: '内置 write-agent-notes 缺失；重装插件。' }
   }
   if (node === 'implement') {
-    if (typeof state.task !== 'string' || state.task === '') return { kind: 'error', text: '没有可实施的工作项：先完成 planning' }
-    if (state.planReady !== true) return { kind: 'error', text: 'planning 尚未通过：先完成 /gate-enter-plan 与 clean plan review' }
+    if (typeof state.task !== 'string' || state.task === '') return { kind: 'error', text: '没有可实施的内容：先用一句话说明要改什么' }
     if (state.exhausted?.plan === true || state.exhausted?.code === true) {
       return { kind: 'error', text: 'review 轮次已耗尽；需要用户决定后重新 /gate-enter-plan' }
-    }
-    const decision = state.noteDecision
-    if (decision === 'mechanical') {
-      if (!isMechanical(state.task)) return { kind: 'error', code: 'mechanical-required', text: '机械豁免只允许 task 以 mechanical: 开头。' }
-    } else if (!Array.isArray(state.notePaths) || state.notePaths.length === 0) {
-      return { kind: 'error', text: `没有工作项：需要 notePaths 或 mechanical:<说明>（当前：${state.task}）` }
     }
   }
   state.phase = 'orchestrating'
@@ -1049,20 +1043,36 @@ export function apply(ctx, config = {}) {
       wakeGateAgent(invocation, `Gate 已初始化：${root}（phase=discuss），notes 已初始化为 ${provisioned.notes}，AGENTS.md 已更新，verify-notes 已配置为 ${projectScripts.command}。`, 'gate-init')
       return { kind: 'success', text: `Gate 已初始化：${root}（phase=discuss）\nnotes：${provisioned.notes}\nAGENTS：${provisioned.agents}\nverify-notes：${projectScripts.command}` }
     }, null)
-    register('gate-enter-plan', '为当前讨论进入 planning', async invocation => {
+    register('gate-enter-plan', '按用户简述进入 planning', async invocation => {
       const result = enterPhase(ctx, invocation.agent, 'plan', reviewLimit, store)
       if (result.kind === 'error') return result
       const brief = String(invocation.rawInput ?? '').trim()
       wakeGateAgent(invocation, `Gate 已进入 plan。用户规划输入：${brief === '' ? '（未提供额外输入）' : brief}。按 Gate 编排 Step 1：先加载 gate-planning 和 gate-write-agent-notes，按 §3 检索历史、§4 判定 noteDecision/notePaths/noteSearch；再派 planning worker，规划必须覆盖该输入。完成后调 gate_record({node:"plan", task, notePaths, noteDecision, noteSearch, workerSessionIds})；缺少 note 字段会被拒绝。`, 'gate-enter-plan')
       return { kind: 'success', text: '进入 planning：工作项将在规划中确定。\n主代理加载 gate-planning + gate-write-agent-notes 后派 worker；gate_record plan 需要 noteDecision/notePaths/noteSearch。' }
-    }, { hint: '<需求/约束>' })
-    register('gate-enter-implement', '为已规划工作项进入 implementation', async invocation => {
+    }, { hint: '[简单需求]' })
+    register('gate-enter-implement', '从当前规划或用户简述直接进入 implementation', async invocation => {
+      const brief = String(invocation.rawInput ?? '').trim()
+      const gate = resolveGate(ctx, invocation.agent)
+      const state = store.read(gate.root, invocation.agent)
+      const direct = state.planReady !== true
+      if (direct) {
+        if (brief === '') return { kind: 'error', text: '请用一句话说明要实施的内容；不要求工作项格式。' }
+        state.task = brief
+        state.planReady = false
+        state.noteDecision = null
+        state.notePaths = []
+        state.noteSearch = null
+        state.noteVerified = false
+        state.noteFinalized = false
+        state.noteFinalizeRecovery = []
+        store.write(gate.root, invocation.agent, state)
+      }
       const result = enterPhase(ctx, invocation.agent, 'implement', reviewLimit, store)
       if (result.kind === 'error') return result
-      const brief = String(invocation.rawInput ?? '').trim()
-      wakeGateAgent(invocation, `Gate 已进入 implement：${result.state.task ?? ''}。用户实施约束：${brief === '' ? '（无额外约束）' : brief}。按 Gate 编排 Step 1 加载 gate-implement，派 implement worker；Step 2 加载 gate-implementation-review 做两轴 Implementation Review；Step 3 加载 gate-verify 做最终验收；Verify PASS 后 Step 4 进入 note-lifecycle，执行 gate_note_finalize → gate_note_verify → gate_record({node:"note-lifecycle"})。`, 'gate-enter-implement')
-      return { kind: 'success', text: `进入 implement：${result.state.task}\n主代理按 Step 1-4 执行：implement → code-review → verify → note-lifecycle。` }
-    }, { hint: '[实施约束]' })
+      const constraints = direct ? '（本句即工作项简述）' : (brief === '' ? '（无额外约束）' : brief)
+      wakeGateAgent(invocation, `Gate 已进入 implement：${result.state.task ?? ''}${direct ? '（直接实施，未走 planning）' : ''}。用户说明：${constraints}。按 Gate 编排 Step 1 加载 gate-implement，派 implement worker；Step 2 加载 gate-implementation-review 做两轴 Implementation Review；Step 3 加载 gate-verify 做最终验收；Verify PASS 后 Step 4 进入 note-lifecycle，执行 gate_note_finalize → gate_note_verify → gate_record({node:"note-lifecycle"})。`, 'gate-enter-implement')
+      return { kind: 'success', text: `进入 implement：${result.state.task}${direct ? '（直接实施）' : ''}\n主代理按 Step 1-4 执行：implement → code-review → verify → note-lifecycle。` }
+    }, { hint: '[简单说明]' })
     register('gate-docs', '开始文档治理', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
@@ -1109,7 +1119,7 @@ export function apply(ctx, config = {}) {
       wakeGateAgent(invocation, `Gate 已进入提案评审：${scope}。主 agent 加载技能 gate-plan-review，按规模派一个或多个 review worker 覆盖 Standards、Spec、Architecture 三轴；完成后 gate_record({node:"proposal-review", findings, reviewAxes, workerSessionIds})。`, 'gate-propose-review')
       return { kind: 'success', text: `进入提案评审：${scope}\n主代理加载技能 gate-plan-review，按三轴完成评审。` }
     })
-    register('gate-block', '冻结当前 gate', async invocation => {
+    register('gate-block', '手动暂停：保留当前节点并停止写入/派 worker；对话仍可继续', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
       if (state.phase === 'blocked') return { kind: 'success', text: '已经是 blocked' }
@@ -1117,20 +1127,22 @@ export function apply(ctx, config = {}) {
       state.phase = 'blocked'; state.work = 'blocked'; state.node = null
       state.blockReason = String(invocation.rawInput ?? '').trim() || 'user-blocked'
       store.write(gate.root, invocation.agent, state)
-      return { kind: 'success', text: `已 block：${state.blockReason}` }
+      return { kind: 'success', text: `已暂停：${state.blockReason}\n解冻后：${state.blockedFrom?.phase ?? 'discuss'}${state.blockedFrom?.node === null || state.blockedFrom?.node === undefined ? '' : ` / ${state.blockedFrom.node}`}\n同一事项：/gate-resume 回到该节点；改变方案：/gate-return-discuss。` }
     }, { hint: '[原因]' })
-    register('gate-resume', '恢复 blocked 的 gate', async invocation => {
+    register('gate-resume', '解冻 blocked：回到 block 前的节点；轮次耗尽回 discuss', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
       if (state.phase !== 'blocked') return { kind: 'error', text: '当前不是 blocked' }
       const from = state.blockedFrom
+      const reason = state.blockReason
       state.phase = from?.phase ?? 'discuss'; state.node = from?.node ?? null
       state.work = 'active'; state.blockReason = null; state.blockedFrom = null
       store.write(gate.root, invocation.agent, state)
       if (state.phase === 'orchestrating' || state.phase === 'reviewing' || state.phase === 'docs') {
         wakeGateAgent(invocation, `Gate 已恢复到 ${state.phase}${state.node === null ? '' : ` / ${state.node}`}。按当前节点协议继续编排。`, 'gate-resume')
       }
-      return { kind: 'success', text: `已恢复到 ${state.phase}${state.node === null ? '' : ` / ${state.node}`}` }
+      const exhausted = reason === 'plan-review-rounds-exhausted' || reason === 'code-review-rounds-exhausted'
+      return { kind: 'success', text: `已解除 blocked：${state.phase}${state.node === null ? '' : ` / ${state.node}`}${exhausted ? '\nreview 轮次已耗尽，不能继续原节点；用 /gate-enter-plan 重新规划。' : '\n已回到暂停前节点，按当前节点协议继续。'}` }
     }, null)
     register('gate-return-discuss', '回到 discuss', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
@@ -1257,7 +1269,7 @@ export function apply(ctx, config = {}) {
       const findings = [...axesFindings, ...topFindings]
       if (args.requiresDiscussion === true) {
         if (args.node === 'plan-review') state.planReady = false
-        state.blockedFrom = { phase: 'discuss', node: null }
+        state.blockedFrom = { phase: state.phase, node: state.node }
         state.phase = 'blocked'
         state.node = null
         state.work = 'blocked'
@@ -1328,7 +1340,17 @@ export function apply(ctx, config = {}) {
           state.work = 'blocked'
           state.blockReason = 'plan-review-rounds-exhausted'
         } else state.node = 'plan-revise'
-      } else if (args.node === 'implement') state.node = 'code-review'
+      } else if (args.node === 'implement') {
+        if (args.noteDecision === 'mechanical') {
+          state.noteDecision = 'mechanical'
+          state.notePaths = []
+          state.noteVerified = true
+        } else {
+          if (Array.isArray(args.notePaths)) state.notePaths = args.notePaths
+          if (['new', 'update', 'in-place'].includes(args.noteDecision)) state.noteDecision = args.noteDecision
+        }
+        state.node = 'code-review'
+      }
       else if (args.node === 'implement-revise') state.node = 'code-review'
       else if (args.node === 'code-review') {
         state.rounds.codeReview += 1
@@ -1385,12 +1407,14 @@ export function apply(ctx, config = {}) {
           state.node = 'implement-revise'
           state.noteVerified = false
         } else if (state.noteDecision === 'mechanical') {
-          state.phase = 'complete'
+          state.phase = 'discuss'
           state.node = null
           state.work = 'active'
           state.blockReason = null
           state.blockedFrom = null
-          state.noteVerified = state.noteDecision === 'mechanical'
+          state.task = null
+          state.planReady = false
+          state.noteVerified = true
           state.noteFinalized = true
         } else {
           state.phase = 'orchestrating'
@@ -1404,11 +1428,13 @@ export function apply(ctx, config = {}) {
         if (state.noteVerified !== true) {
           return { ok: false, code: 'note-lifecycle-incomplete', reason: 'note-lifecycle 需要先 gate_note_finalize + gate_note_verify。' }
         }
-        state.phase = 'complete'
+        state.phase = 'discuss'
         state.node = null
         state.work = 'active'
         state.blockReason = null
         state.blockedFrom = null
+        state.task = null
+        state.planReady = false
       }
       store.write(gate.root, exec.agent, state)
       return { ok: true, phase: state.phase, node: state.node, rounds: state.rounds, blockReason: state.blockReason, verification: state.verification, state: normalizeState(state) }
@@ -1568,6 +1594,7 @@ export function apply(ctx, config = {}) {
 
 
 }
+
 
 
 

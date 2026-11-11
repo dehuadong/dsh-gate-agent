@@ -16,16 +16,16 @@ Host 插件：按阶段控制 agent 的写入与评审流程，提供 `/gate-*` 
 | 命令 | 参数 | 作用 |
 |---|---|---|
 | `/gate-init` | 无 | 初始化 notes 根、AGENTS.md、`verify-notes` 脚本，保持 `discuss` |
-| `/gate-enter-plan [需求/约束]` | 可选 | 进入 `orchestrating/plan`；用户输入随 follow-up 交给 planning |
-| `/gate-enter-implement [实施约束]` | 可选 | 进入 `orchestrating/implement`；复用已通过 planning 的 task |
+| `/gate-enter-plan [简单需求]` | 可选 | 进入 `orchestrating/plan`；用户简述随 follow-up 交给 planning |
+| `/gate-enter-implement [简单说明]` | 可选 | 进入 `orchestrating/implement`；复用已通过 planning 的 task，或直接用简述作为当前事项 |
 | `/gate-docs` | 无 | 文档治理，不调用技能 |
 | `/gate-code-review [范围]` | 可选 | 单独只读 code review，只输出 findings；无参数时按上下文确定范围 |
 | `/gate-code-verify [范围]` | 可选 | 单独只读验收，走 gate-verify；无参数时按上下文确定范围 |
 | `/gate-propose-review [提案]` | 可选 | 单独提案评审，走 gate-plan-review 三轴 |
 | `/gate-note-verify` | 无 | 只读检查 notes tree/format/lifecycle/archived |
 | `/gate-note-seal` | 无 | 只给 `archived/` 中已有 Note 补写 `manifest.json` 的 SHA-256 封印；不归档、不改 Note 内容 |
-| `/gate-block [原因]` | 可选 | 手动冻结当前阶段 |
-| `/gate-resume` | 无 | 恢复 block 前状态 |
+| `/gate-block [原因]` | 可选 | 手动暂停：保留当前节点；手动 block 后用 `/gate-resume` 回原节点 |
+| `/gate-resume` | 无 | 解冻 block：回到 block 前的节点；轮次耗尽回 discuss |
 | `/gate-return-discuss` | 无 | 用户手动回到 discuss |
 | `/gate-status` | 无 | 只读状态，包括 plan 就绪、轮次与 verify 结果 |
 
@@ -33,7 +33,7 @@ Host 插件：按阶段控制 agent 的写入与评审流程，提供 `/gate-*` 
 
 进入阶段不等于执行。主代理派发 worker，再用 `gate_record` 推进节点。
 
-Verify PASS 后进入 `note-lifecycle`，不直接 complete：
+Verify PASS 后进入 `note-lifecycle`，完成后回 discuss，不停留在 complete：
 
 1. `gate_note_finalize` 把 proposed Note 移到 `implemented/` 并更新头块；
 2. `gate_note_verify` 跑四条校验并在通过后设置 `noteVerified`；
@@ -65,7 +65,7 @@ planning worker 用 `gate_note_write` 写 `.agents/notes/proposed`；原地同�
 gate_record({ node: 'plan', task: 'gate-test', workerSessionIds: ['<child-session-id>'] })
 ```
 
-`task` 必须由 planning 产出；它可以是工作项标题，也可以是 `mechanical:<说明>`。随后派 `gate-plan-review`：
+`task` 可以由 planning 产出，也可以来自 `/gate-enter-implement` 的用户简述；planning 的 task 可以是标题或 `mechanical:<说明>`。随后派 `gate-plan-review`：
 
 ```text
 gate_record({ node: 'plan-review', findings, reviewAxes, workerSessionIds, requiresDiscussion })
@@ -79,7 +79,7 @@ findings 空 → 回 discuss，`planReady=true`；需要用户决定 → 进入 
 /gate-enter-implement
 ```
 
-前提：已有 task、`planReady=true`、没有耗尽 review 轮次，并且 task 有同 topic 的 proposed Note 或 `mechanical:` 前缀。
+前提：已有 task 或用户给出一句简述，且没有耗尽 review 轮次；`planReady` 不是硬前置。
 
 主代理派 `gate-implement`，然后两轴 review、verify：
 
@@ -89,7 +89,9 @@ gate_record({ node: 'code-review', findings, reviewAxes, workerSessionIds })
 gate_record({ node: 'verify', verification, workerSessionIds })
 ```
 
-`/gate-enter-implement` 不接受工作项参数，避免与 planning 结果不一致。
+有已通过 planning 的 task 时，简述作为实施约束；没有规划时，简述直接作为工作项进入 implement。命令不要求用户写工作项格式，也不要求 `mechanical:` 前缀。
+
+直接 implement 时由主 agent 按 `gate-write-agent-notes` 判断改动性质：机械改动用 `gate_record({node:'implement', noteDecision:'mechanical'})` 标记并跳过 lifecycle；非机械改动先补 Note 或带上 `notePaths`。
 
 ### 单独 code review
 
@@ -152,14 +154,36 @@ gate_record({ node: 'docs' })
 
 回到 discuss，不需要用户再执行 slash command。
 
-### 暂停与恢复
+### 暂停、恢复与讨论
+
+`/gate-block [原因]` 是**手动暂停**，不是沟通模式：
+
+- 保留当前 `phase/node`；
+- 冻结写入和 worker 派发；
+- 会话不关闭，仍然可以正常聊天、提问、确认方案；
+- 命令本身不 follow-up，agent 不会自动继续。
+
+暂停后的选择：
+
+| 目的 | 操作 |
+|---|---|
+| 同一事项，确认后继续原节点 | `/gate-resume` |
+| 方案变了，回讨论重新开始 | `/gate-return-discuss` |
+| 讨论完直接实施 | `/gate-return-discuss` → `/gate-enter-implement <一句说明>` |
+| 需要重新规划 | `/gate-return-discuss` → `/gate-enter-plan <一句需求>` |
+
+`requiresDiscussion` 产生的自动 block 与手动 block 一样保存当时的 `phase/node`，`/gate-resume` 回到原节点继续；只有 review 轮次耗尽产生的 block 不保存原节点，`/gate-resume` 回到 discuss。`gate-status` 会显示“解冻后：…”。
 
 ```text
 /gate-block 等作者确认方案
-/gate-resume
+（继续对话确认）
+/gate-resume              # 同节点继续
+# 或
+/gate-return-discuss
+/gate-enter-implement 按确认后的方案改
 ```
 
-blocked 时写入被拒绝；resume 恢复 `blockedFrom`。review 轮次耗尽也会进入 blocked，但 `exhausted` 标记保留；`/gate-resume` 不会清除它，需要重新 `/gate-enter-plan` 开新规划。
+blocked 时写入被拒绝；review 轮次耗尽进入 blocked 后 `exhausted` 保留，不能靠 `/gate-resume` 绕过，需要重新 `/gate-enter-plan`。
 
 ## gate_record
 
@@ -225,6 +249,11 @@ gate_record({
 - verify 的 `toolResults` 会用 `sessionQuery.readSession` 在 worker session log 中绑定到真实 `tool/result` callId；`commands`/`evidence` 仍是主代理转述，不能当成完整独立执行证明。
 - `ctx.tools.restrict` 只掩全局工具；scoped 写工具仍可能出现在工具面，硬拒绝由 `ctx.tools.guard` 保证。
 - 旧 gate 迁移仍属后续 B 工作项；session projection、guard/restrict/sandbox、worker tree 证据与 review axes 已在 T1/T2/T3 实现。
+
+
+
+
+
 
 
 

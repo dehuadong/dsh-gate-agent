@@ -1,11 +1,11 @@
 ---
 name: gate-implement
-description: Gate 实现方法：主 agent 读取后提炼任务并派发；worker 不加载技能。
+description: Gate 实现方法：主 agent 读取后提炼任务并派发；subagent worker 不加载技能。
 ---
 
 ## Main agent use
 
-主 agent 在派发前自行读取本方法，给 worker 一份自包含任务：已接受的范围、约束、验收检查和实现规则。worker 不应加载本技能或其他 gate 方法文件。
+主 agent 在派发前自行读取本方法，给 subagent worker 一份自包含任务：已接受的范围、约束、验收检查和实现规则。subagent worker 不应加载本技能或其他 gate 方法文件。
 
 ## 实现
 

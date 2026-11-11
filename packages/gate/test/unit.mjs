@@ -162,7 +162,13 @@ check('discuss denies worker dispatch', (await exec('subagent', { description: '
 check('discuss denies apply_patch', (await exec('apply_patch', { input: '*** Begin Patch\n*** Add File: src/x.ts\n+x\n*** End Patch' })).kind === 'deny')
 
 const withoutPlan = await run('gate-enter-implement')
-check('implement without plan review is rejected', withoutPlan.kind === 'error' && stateOf().planReady !== true)
+check('implement without a brief is rejected', withoutPlan.kind === 'error' && withoutPlan.text.includes('一句话'))
+
+const directWorkspace = makeWorkspace()
+const directHost = fakeHost(directWorkspace)
+const directAgent = { id: 'session-direct', session: { header: {} } }
+const directEnter = await directHost.commands['gate-enter-implement'].handler({ agent: directAgent, rawInput: '把日志级别改成 info', attachments: [] })
+check('implement accepts a simple brief without planning', directEnter.kind === 'success' && loadState(directWorkspace, directAgent).node === 'implement' && loadState(directWorkspace, directAgent).task === '把日志级别改成 info')
 
 await run('gate-enter-plan')
 check('plan command enters orchestrating', stateOf().phase === 'orchestrating' && stateOf().node === 'plan')
@@ -200,11 +206,11 @@ check('verify requires toolResults', noToolResults.code === 'verification-requir
 const unboundToolResult = await record({ node: 'verify', verification: { commands: ['x'], evidence: ['artifacts/verify.txt'], toolResults: ['ghost'], passed: true } })
 check('verify rejects unbound toolResults', unboundToolResult.code === 'verification-required')
 const verified = await record({ node: 'verify', verification: { commands: ['node packages/gate/test/unit.mjs'], evidence: ['artifacts/verify.txt'], passed: true } })
-check('verify passes', verified.phase === 'complete', JSON.stringify(verified))
+check('verify passes back to discuss', verified.phase === 'discuss', JSON.stringify(verified))
 check('verify records execution-bound evidence hash', stateOf().verification?.executionBound === true && stateOf().verification?.selfReported === false && /^[a-f0-9]{64}$/u.test(stateOf().verification?.evidence?.[0]?.sha256 ?? ''))
 check('status shows verify evidence', (await run('gate-status', '')).text.includes('verify：PASS（verified）'))
 
-await run('gate-enter-implement')
+await run('gate-enter-implement', 'work')
 await record({ node: 'implement' })
 await record({ node: 'code-review', findings: [{ id: 'C1' }] })
 check('code findings route to implement revise', stateOf().node === 'implement-revise')
@@ -217,8 +223,7 @@ saveState(workspace, agent, { ...defaultState(), phase: 'orchestrating', node: '
 const codeBlocked = await record({ node: 'code-review', findings: [{ id: 'D1' }], requiresDiscussion: true })
 check('code review can require discussion', codeBlocked.phase === 'blocked')
 await run('gate-resume')
-await run('gate-enter-implement')
-check('re-enter implement preserves review rounds', stateOf().rounds.codeReview === 2)
+check('resume returns to code review', stateOf().phase === 'orchestrating' && stateOf().node === 'code-review' && stateOf().rounds.codeReview === 2)
 await run('gate-return-discuss')
 
 await run('gate-enter-plan')
@@ -236,8 +241,9 @@ const planBlocked = await record({ node: 'plan-review', findings: [{ id: 'P1' }]
 check('plan findings can require discussion', planBlocked.phase === 'blocked' && stateOf().blockReason === 'needs-user-decision')
 check('blocked plan cannot enter implement', (await run('gate-enter-implement')).kind === 'error')
 await run('gate-resume')
-check('resume returns to discuss', stateOf().phase === 'discuss')
+check('resume returns to plan review', stateOf().phase === 'orchestrating' && stateOf().node === 'plan-review')
 check('needs-decision plan is not ready', (await run('gate-enter-implement')).kind === 'error')
+await run('gate-return-discuss')
 
 await run('gate-enter-plan')
 await record({ node: 'plan', task: 'work' })
@@ -246,7 +252,8 @@ await run('gate-enter-implement')
 const implementationBlocked = await record({ node: 'implement', requiresDiscussion: true, discussionReason: 'contract choice' })
 check('implement can return to blocked discussion', implementationBlocked.phase === 'blocked' && stateOf().blockReason === 'needs-user-decision')
 await run('gate-resume')
-check('resume returns implement discussion to discuss', stateOf().phase === 'discuss')
+check('resume returns to implement', stateOf().phase === 'orchestrating' && stateOf().node === 'implement')
+await run('gate-return-discuss')
 
 await run('gate-enter-plan')
 await record({ node: 'plan', task: 'work' })
@@ -285,6 +292,16 @@ check('block freezes the gate', stateOf().phase === 'blocked' && stateOf().work 
 check('block denies writes', (await exec('write', { file_path: 'docs/x.md' })).kind === 'deny')
 await run('gate-resume')
 check('resume returns to discuss after manual block', stateOf().phase === 'discuss' && stateOf().work === 'active')
+
+const pauseWorkspace = makeWorkspace()
+const pauseHost = fakeHost(pauseWorkspace)
+const pauseAgent = { id: 'session-pause', session: { header: {} } }
+saveState(pauseWorkspace, pauseAgent, { ...defaultState(), phase: 'orchestrating', node: 'implement', task: 'work' })
+await pauseHost.commands['gate-block'].handler({ agent: pauseAgent, rawInput: 'pause', attachments: [] })
+const pausedStatus = await pauseHost.commands['gate-status'].handler({ agent: pauseAgent, rawInput: '', attachments: [] })
+check('blocked status shows resume target', pausedStatus.text.includes('解冻后：orchestrating / implement'))
+await pauseHost.commands['gate-resume'].handler({ agent: pauseAgent, rawInput: '', attachments: [] })
+check('manual block resumes the original node', loadState(pauseWorkspace, pauseAgent).phase === 'orchestrating' && loadState(pauseWorkspace, pauseAgent).node === 'implement')
 
 const sandboxModes = []
 const sandboxAgent = { id: 'sandbox-session', session: { header: {}, append: (type, data) => { if (type === 'sandbox/mode') sandboxModes.push(data.mode) } } }
@@ -426,7 +443,7 @@ const noNoteHost = fakeHost(noNote)
 const noNoteAgent = { id: 'session-no-note', session: { header: {} } }
 saveState(noNote, noNoteAgent, { ...defaultState(), phase: 'discuss', task: 'missing-work', planReady: true })
 const noNoteEnter = await noNoteHost.commands['gate-enter-implement'].handler({ agent: noNoteAgent, rawInput: '', attachments: [] })
-check('implement without proposed note is rejected', noNoteEnter.kind === 'error' && noNoteEnter.text.includes('工作项'))
+check('implement can start without a note', noNoteEnter.kind === 'success' && loadState(noNote, noNoteAgent).node === 'implement')
 
 const initWorkspace = mkdtempSync(path.join(os.tmpdir(), 'gate-init-'))
 const initHost = fakeHost(initWorkspace)
@@ -547,7 +564,7 @@ check('finalize preserves multi-line section bodies', implementedContent.include
 const noteVerified = await lifecycleHost.tools.gate_note_verify.execute({}, { agent: lifecycleAgent })
 check('gate_note_verify sets noteVerified', noteVerified.ok === true && noteVerified.state.noteVerified === true)
 const lifecycleDone = await lifecycleHost.tools.gate_record.execute({ node: 'note-lifecycle' }, { agent: lifecycleAgent })
-check('note-lifecycle completes gate', lifecycleDone.ok === true && lifecycleDone.state.phase === 'complete')
+check('note-lifecycle returns to discuss', lifecycleDone.ok === true && lifecycleDone.state.phase === 'discuss' && lifecycleDone.state.task === null)
 
 const invalidNoteWorkspace = mkdtempSync(path.join(os.tmpdir(), 'gate-invalid-note-'))
 addGate(invalidNoteWorkspace)
@@ -564,6 +581,8 @@ if (failures > 0) {
   process.exit(1)
 }
 console.log('\nALL CHECKS PASSED')
+
+
 
 
 

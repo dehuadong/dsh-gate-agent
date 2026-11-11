@@ -1,56 +1,107 @@
 ---
 name: gate-implementation-review
-description: Gate 实现评审方法：主 agent 读取后按改动规模决定 worker 数量；方法同时覆盖 Standards 与 Spec 两轴，不拆成两个技能。
+description: "Gate 实现评审：沿 Standards 与 Spec 两轴评审固定点之后的改动，保留原始 code-review 方法；主 agent 决定 review worker 数量。"
 ---
 
-## 主 agent 使用
+## Gate 使用
 
-主 agent 在派发前自行读取本方法，给一个或多个 review worker：具体改动范围、固定点、验收合同和两轴规则；worker 数量由主 agent 按改动规模决定。worker 不应加载本技能或其他 gate 方法文件。
+主 agent 读取本方法后，按改动规模派一个或多个 review worker；worker 不加载本技能或其他 gate 方法文件。`gate_record({node:'code-review'})` 需要 `reviewAxes.standards.findings` 与 `reviewAxes.spec.findings`；worker 数量由主 agent 决定，但两轴都必须产出。
 
-## 评审方式
+Two-axis review of the requested change scope, including uncommitted work when applicable:
 
-对请求的改动范围同时做 **Standards** 与 **Spec** 两轴评审，一次产出两轴结果；不拆成两个技能。worker 数量由主 agent 决定。
+- **Standards**: does the change conform to this repo's documented standards and current authoritative decisions?
+- **Spec**: does the change satisfy the governing work item's scope and acceptance conditions, including any applicable independent Spec?
 
-### 固定评审点
+Both axes are independent. The gate main agent decides worker count: it may run them as parallel sub-agents, or use one worker that covers both; either way both axes must be reported separately.
 
-使用 gate 或 implementation 工作流提供的固定点。优先复用对话中已记录的基线；只有在无法从现有上下文确定范围时才询问。
+Resolve work tracking and document ownership from project instructions. A particular tracker configuration path or separate Spec file is not required for a review. In gate sessions the acceptance contract normally comes from the current task/Note; do not invent an independent Spec.
 
-只记录一次评审命令。已提交分支用 `git diff <fixed-point>...HEAD`；工作区改动用已记录基线对比工作树，并单独检查范围内未跟踪文件。包含 staged/unstaged，排除既有用户改动和其他任务。已有改动重叠时检查归属，不要因为重叠丢掉整个文件。评审前确认固定点和完整范围，包括新文件。范围为空时报告“没有改动可评审”；不要把空的 committed diff 误认为空工作区。
+## Process
 
-### Standards 轴
+### 1. Pin the fixed point
 
-判断改动是否符合项目文档标准和当前权威决定。读取项目说明和文档属主入口，以及适用的编码/写作标准；纳入工作项和项目配置中的设计决定与约束。缺失或冲突的必需输入要报告为评审覆盖缺口。
+Use the fixed point supplied by the user or calling implementation workflow. Reuse the baseline already recorded in the conversation; ask only when the intended scope cannot be established from available context.
 
-除项目标准外，Standards 轴固定携带下列 Fowler 代码异味基线。**项目标准优先**：项目认可的写法压过基线；**始终是判断**：每项只是启发式，不是硬违规。工具已经强制的项跳过。
+Capture the exact review commands once. For committed branch changes use `git diff <fixed-point>...HEAD`; for implementation worktree changes compare the recorded baseline to the working tree and separately inspect scoped untracked files. Include staged and unstaged changes, excluding pre-existing user changes and other tasks. Also record relevant commits. When existing changes overlap, inspect attribution rather than discarding the entire file.
 
-- **神秘命名**：函数、变量或类型名字没有说明它做什么/持有什么。→ 重命名；没有诚实的名字说明设计还模糊。
-- **重复代码**：同一逻辑形状出现在多个 hunk/文件。→ 提取共享形状，两边调用。
-- **依恋情结**：方法访问别的对象数据多于自己的。→ 把方法移到它依恋的数据上。
-- **数据泥团**：同一组字段/参数总一起出现。→ 收成一个类型传递。
-- **基本类型偏执**：用原始值/字符串代表应有自己类型的领域概念。→ 给概念一个小类型。
-- **重复分支**：同一类型的 switch/if 级联在改动中反复出现。→ 用多态或共享映射。
-- **散弹式修改**：一个逻辑改动迫使跨很多文件改动。→ 把一起变化的东西收进一个模块。
-- **发散式变化**：一个文件/模块因多个无关原因被改。→ 拆分，让每个模块只因一个原因变化。
-- **夸夸其谈通用性**：为规格没有的需求加抽象、参数或钩子。→ 删掉，直到真实需求出现。
-- **过长的消息链**：调用方不该依赖的 `a.b().c().d()` 长链。→ 在第一个对象上用一个方法隐藏。
-- **中间人**：类/函数主要只是转发。→ 删掉，直接调用目标。
-- **被拒绝的遗赠**：子类/实现者忽略或覆盖大部分继承。→ 用组合替代继承。
+Before dispatch, resolve the fixed point and verify the complete scope, including new files. If it is empty, report no changes to review; do not mistake an empty committed diff for an empty worktree.
 
-### Spec 轴
+### 2. Identify the acceptance contract
 
-判断改动是否满足工作项的选定范围与验收条件，包括适用合同。优先复用 gate 或对话中已提供的工作项、验收条件、设计约束和兼容性预期；必要时按项目工作项约定定位。范围/验收/合同无法识别时向 gate 要属主并报告缺口，不要发明验收。
+First reuse the governing work item, acceptance conditions and applicable design already supplied by the caller or conversation. Otherwise:
 
-报告：验收合同中缺失或部分实现的要求；改动中未被要求的越界行为；看起来实现但实现错误的要求。每项都要引用或指出具体合同条款。
+1. Resolve a work identifier or path from the user's request, branch or relevant commits; locate it through the project's configured tracker or existing work-item convention.
+2. Read that work item's selected scope and acceptance conditions, then follow its references to the applicable revision and sections of any independently owned Spec. Use the registered document owner to resolve design decisions; do not infer a Spec solely from a matching filename.
+3. For direct changes without a separate work item, use the authorized user request and settled decisions in the conversation as the contract. If the contract still cannot be identified, ask the user for its owner. Skip the Spec axis only when no reliable acceptance contract exists, and report that coverage gap.
 
-## 输出
+### 3. Identify the standards sources
 
-一次返回两轴：
+Read project instructions and the document ownership entry, then relevant writing and coding standards such as `CODING_STANDARDS.md` or `CONTRIBUTING.md`. Include the applicable design decisions and constraints identified by the project configuration and governing work item. Report missing or conflicting required inputs as review coverage gaps.
+
+On top of whatever the repo documents, the Standards axis always carries the **smell baseline** below: a fixed set of Fowler code smells (_Refactoring_, ch.3) that applies even when a repo documents nothing. Two rules bind it:
+
+- **The repo overrides.** A documented repo standard always wins; where it endorses something the baseline would flag, suppress the smell.
+- **Always a judgement call.** Each smell is a labelled heuristic ("possible Feature Envy"), never a hard violation. Like any standard here, skip anything tooling already enforces.
+
+Each smell reads *what it is* → *how to fix*; match it against the diff:
+
+- **Mysterious Name**: a function, variable, or type whose name doesn't reveal what it does or holds. → rename it; if no honest name comes, the design's murky.
+- **Duplicated Code**: the same logic shape appears in more than one hunk or file in the change. → extract the shared shape, call it from both.
+- **Feature Envy**: a method that reaches into another object's data more than its own. → move the method onto the data it envies.
+- **Data Clumps**: the same few fields or params keep travelling together (a type wanting to be born). → bundle them into one type, pass that.
+- **Primitive Obsession**: a primitive or string standing in for a domain concept that deserves its own type. → give the concept its own small type.
+- **Repeated Switches**: the same `switch`/`if`-cascade on the same type recurs across the change. → replace with polymorphism, or one map both sites share.
+- **Shotgun Surgery**: one logical change forces scattered edits across many files in the diff. → gather what changes together into one module.
+- **Divergent Change**: one file or module is edited for several unrelated reasons. → split so each module changes for one reason.
+- **Speculative Generality**: abstraction, parameters, or hooks added for needs the spec doesn't have. → delete it; inline back until a real need shows.
+- **Message Chains**: long `a.b().c().d()` navigation the caller shouldn't depend on. → hide the walk behind one method on the first object.
+- **Middle Man**: a class or function that mostly just delegates onward. → cut it, call the real target direct.
+- **Refused Bequest**: a subclass or implementer that ignores or overrides most of what it inherits. → drop the inheritance, use composition.
+
+### 4. Dispatch the review workers
+
+**Standards review worker prompt** should include:
+
+- The full diff command and commit list.
+- The standards and current-decision sources found in step 3, **plus the smell baseline from step 3** pasted in full (the sub-agent has no other access to it).
+- The brief: "Report, per file/hunk where relevant, (a) every place the diff violates a documented standard or current authoritative decision: cite the source and rule; and (b) any baseline smell you spot: name it and quote the hunk. Distinguish hard violations from judgement calls: documented rules and current decisions can be hard, but baseline smells are always judgement calls, and a documented repo standard overrides the baseline. Skip anything tooling enforces. Under 400 words."
+
+**Spec review worker prompt** should include:
+
+- The diff command and commit list.
+- The governing work item or conversational acceptance contract and relevant sections of any applicable independent Spec.
+- The brief: "Report: (a) requirements of the acceptance contract that are missing or partial; (b) behaviour in the diff that wasn't requested (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote or identify the exact contract clause for each finding. Under 400 words."
+
+If no reliable acceptance contract exists, skip the Spec axis and note this coverage gap in the final report.
+
+### 5. Aggregate
+
+Present the two reports under `## Standards` and `## Spec` headings, verbatim or lightly cleaned. Do **not** merge or rerank findings, because the two axes are deliberately separate (see _Why two axes_).
+
+End with a one-line summary: total findings per axis, and the worst issue _within each axis_ (if any). Don't pick a single winner across axes: that's the reranking the separation exists to prevent.
+
+## Why two axes
+
+A change can pass one axis and fail the other:
+
+- Code that follows every standard but implements the wrong thing → **Standards pass, Spec fail.**
+- Code that does exactly what the issue asked but breaks the project's conventions → **Spec pass, Standards fail.**
+
+Reporting them separately stops one axis from masking the other.
+
+## Gate 返回格式
+
+worker 返回给 gate 主 agent：
 
 ```json
 {"ok":true,"standards":{"findings":[{"axis":"Standards","summary":"...","evidence":"...","severity":"blocking|important"}]},"spec":{"findings":[{"axis":"Spec","summary":"...","evidence":"...","severity":"blocking|important"}]},"summary":"..."}
 ```
 
-两轴 `findings` 为空表示该轴通过。不要修复 findings。
+主 agent 汇总后调用：
 
+```text
+gate_record({node:'code-review', findings, reviewAxes, workerSessionIds})
+```
 
+`reviewAxes` 必须包含 `standards` 与 `spec`；空的 `findings` 表示该轴通过。worker 不修复 findings。
 
