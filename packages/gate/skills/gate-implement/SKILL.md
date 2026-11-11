@@ -7,7 +7,7 @@ description: Gate 实现方法：主 agent 读取后提炼任务并派发；work
 
 主 agent 在派发前自行读取本方法，给 worker 一份自包含任务：已接受的范围、约束、验收检查和实现规则。worker 不应加载本技能或其他 gate 方法文件。
 
-# 实现
+## 实现
 
 ## 1. 入口条件
 
@@ -21,7 +21,7 @@ description: Gate 实现方法：主 agent 读取后提炼任务并派发；work
 
 工作适合一个连贯执行单元时直接实现。
 
-工作过大、存在有意义的独立切片或依赖时，读取 `tickets.md`。
+工作过大、存在有意义的独立切片或依赖时，读取 [tickets.md](./tickets.md) 。
 
 不要为了枚举编码步骤而创建 ticket。
 
@@ -39,7 +39,7 @@ description: Gate 实现方法：主 agent 读取后提炼任务并派发；work
 
 工作时运行聚焦测试和相关静态检查。
 
-## 4. 实现 findings
+### 实现 findings
 
 gate 可能返回实质 findings。按属主处理：
 
@@ -54,7 +54,7 @@ gate 可能返回实质 findings。按属主处理：
 
 对属于本实现的 findings，在当前实现中修复，重跑受影响测试和静态检查，并在下一次 receipt 报告每项处置。没有证据不要标记已解决。
 
-## 5. Receipt 与交接
+## 4. Receipt 与交接
 
 实现完成的条件：
 
@@ -62,7 +62,7 @@ gate 可能返回实质 findings。按属主处理：
 - 必需 ticket 已完成
 - 相关实现期检查通过
 - 实质 findings 已解决或明确报告为 blocked
-- 改动已准备好进入 verify
+- 改动已准备好进入 `verify`
 
 返回 receipt，包含：
 
@@ -71,5 +71,5 @@ gate 可能返回实质 findings。按属主处理：
 - 每项 finding 的处置
 - 剩余风险、blocker 或需要决定的点
 
-不要执行 verify、不要把工作项标完成、不要推进 gate。verify 节点和最终完成由 gate 负责。
+不要执行 `verify`、不要把工作项标完成、不要推进 gate。verify 节点和最终完成由 gate 负责。
 

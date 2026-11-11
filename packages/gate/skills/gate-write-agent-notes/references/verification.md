@@ -35,7 +35,6 @@ Notes 读取/写入命令均接受 `--root <path>` 或 `--root=<path>`，每次�
 - 轻量（个人/无 git）：前两个脚本即可，归档封印在第一次归档后自然生效。
 - 完整：运行 `npm run verify-notes` 跑 tree/format/lifecycle/archived 四检；该脚本由 `/gate-init` 生成，只调用插件内置脚本。gate 会话内也可用 `/gate-note-verify`。
 
-三个校验脚本方法上来自 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，按通用中文单语宿主裁过：无双语三件套、无 DSH 迁仓豁免。锚点体检是可选软报告，不是 DSH 门禁。
 
 ## 脚本路径
 

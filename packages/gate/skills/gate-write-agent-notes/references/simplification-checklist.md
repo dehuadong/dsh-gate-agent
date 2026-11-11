@@ -1,7 +1,5 @@
 # 按需阅读：简化机会自检
 
-> 提炼自 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 `dsh-find-simplifications` skill。收尾或重构时扫一遍；别在功能改动里硬塞无关简化。
-
 ## 值得删/合/降级的信号
 
 - 公开方法、事件、配置项、包、持久化事件或测试产物没有生产消费方（测试/文档是唯一消费方且行为非关键）。

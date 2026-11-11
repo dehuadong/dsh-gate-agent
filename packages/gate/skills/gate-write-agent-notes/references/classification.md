@@ -30,5 +30,3 @@
 
 `scripts/agent-note-tree.ts` 定义 `AGENT_NOTE_CLASSES` 常量；未知 class 文件夹、lifecycle 根下的散落 `.md` 都会报错。新增 class 必须同时改常量和本文档，否则检查直接红。
 
-分类封闭集与判据对齐 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 notes 分类实践。
-

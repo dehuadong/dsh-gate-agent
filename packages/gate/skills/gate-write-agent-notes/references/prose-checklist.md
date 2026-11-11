@@ -1,7 +1,5 @@
 # 按需阅读：Notes 行文与去泄露自检
 
-> 提炼自 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 仓库内 `dsh-prose-standard` 与 `dsh-trim-cot-leakage` 两个 skill 的可搬运部分。写/改 Note 时对照此清单；只改代码不动 Note 时跳过。
-
 ## 原则
 
 - 只写代码说不清的：行为、失败、时序、所有权、后果与取舍。别复述代码或推导过程。
