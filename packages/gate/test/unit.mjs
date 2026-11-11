@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { apply, Config, DISCUSS_ORCHESTRATION } from '../index.js'
+import { apply, Config, DISCUSS_ORCHESTRATION, GATE_RECORD_NODES, NODE_METHODS, WORKER_NODES } from '../index.js'
 import { loadState, saveState, defaultState } from '../src/state.js'
 
 let failures = 0
@@ -62,7 +62,6 @@ function fakeHost(workspace, rootSession, options = {}) {
     },
     sessionProjections: options.projection,
     systemPrompt: { section: definition => sections.push(definition), getSectionOrder: () => 500 },
-    skills: { register: () => {} },
     commands: { register: definition => { commands[definition.name] = definition } },
     tools: {
       register: definition => { tools[definition.name] = definition },
@@ -117,8 +116,7 @@ const execWith = (target, targetAgent, name, args) => {
 const exec = (name, args) => execWith(host, agent, name, args)
 const run = (name, input) => host.commands[name].handler({ agent, rawInput: input, attachments: [] })
 const record = async args => {
-  let withWorkers = ['plan', 'plan-review', 'proposal-review', 'plan-revise', 'implement', 'code-review', 'implement-revise', 'verify', 'verify-standalone', 'code-review-standalone'].includes(args.node)
-    && args.workerSessionIds === undefined
+  let withWorkers = WORKER_NODES.has(args.node) && args.workerSessionIds === undefined
     ? { ...args, workerSessionIds: ['worker-test'] }
     : args
   if (args.node === 'plan' && args.noteDecision === undefined) {
@@ -145,6 +143,7 @@ check('docs command registered', typeof host.commands['gate-docs']?.handler === 
 check('status command registered', typeof host.commands['gate-status']?.handler === 'function')
 check('note archive command registered', typeof host.commands['gate-note-archive']?.handler === 'function')
 check('note board command registered', typeof host.commands['gate-note-board']?.handler === 'function')
+check('gate-fix-bug command registered', typeof host.commands['gate-fix-bug']?.handler === 'function')
 check('gate tools declare output schema and render', Object.values(host.tools).every(tool => tool?.output?.schema !== undefined && typeof tool.output.render === 'function'))
 check('discuss denies code', (await exec('write', { file_path: 'src/x.ts' })).kind === 'deny')
 check('discuss denies docs', (await exec('write', { file_path: 'docs/x.md' })).kind === 'deny')
@@ -158,6 +157,24 @@ await run('gate-return-discuss')
 check('return enters discuss', stateOf().phase === 'discuss')
 const status = await run('gate-status', '')
 check('status is factual', status.text.includes('状态：discuss') && status.text.includes('blockReason：无') && !status.text.includes('下一步'))
+const statusTool = await host.tools.gate_status.execute({}, { agent })
+check('gate_status tool is registered and matches /gate-status', statusTool.ok === true && statusTool.text === status.text)
+const statusStateBefore = stateOf()
+await host.tools.gate_status.execute({}, { agent })
+check('gate_status is read-only', JSON.stringify(stateOf()) === JSON.stringify(statusStateBefore))
+check('NODE_METHODS covers the gate_record node enum',
+  GATE_RECORD_NODES.every(node => Object.hasOwn(NODE_METHODS, node))
+  && Object.keys(NODE_METHODS).every(node => GATE_RECORD_NODES.includes(node))
+  && NODE_METHODS.docs === '无')
+let statusAppends = 0
+const appendAgent = { id: 'status-append', session: { header: {}, append: () => { statusAppends += 1 } } }
+const appendHost = fakeHost(workspace, appendAgent)
+const appendStatus = await appendHost.tools.gate_status.execute({}, { agent: appendAgent })
+check('gate_status appends no session events', appendStatus.ok === true && statusAppends === 0)
+saveState(workspace, agent, { ...defaultState(), phase: 'orchestrating', node: 'plan-review', task: 'x', work: 'active', noteDecision: 'new', notePaths: [{ path: '.agents/notes/proposed/feature/x.md', class: 'feature', lifecycle: 'proposed' }], exhausted: { plan: true, code: false }, verification: { passed: true, selfReported: false } })
+const richStatus = await host.tools.gate_status.execute({}, { agent })
+check('gate_status renders notes/exhausted/verify lines', richStatus.text.includes('notes：') && richStatus.text.includes('exhausted：') && richStatus.text.includes('verify：PASS'))
+saveState(workspace, agent, defaultState())
 const roundWorkspace = makeWorkspace()
 const roundHost = fakeHost(roundWorkspace)
 const roundAgent = { id: 'session-round', session: { header: {} } }
@@ -166,6 +183,21 @@ check('status counts the current review round', (await roundHost.commands['gate-
 check('discuss protocol is read-only and default', DISCUSS_ORCHESTRATION.includes('discuss 是默认阶段') && DISCUSS_ORCHESTRATION.includes('只读讨论') && !DISCUSS_ORCHESTRATION.includes('/discuss'))
 const gateSection = host.sections.find(section => section.name === 'gate:protocol')
 check('discuss prompt does not claim orchestration', gateSection.text({ agent }).includes('只读讨论') && !gateSection.text({ agent }).includes('编排中'))
+const variantCases = [
+  ['docs', { phase: 'docs', task: 'docs', work: 'active' }, '## /gate-docs 编排'],
+  ['fix-bug', { phase: 'orchestrating', node: 'fix-bug', task: 'x', work: 'active' }, '## /gate-fix-bug 编排'],
+  ['reviewing-code', { phase: 'reviewing', node: 'code-review-standalone', task: 'x', work: 'active' }, '只读 code review'],
+  ['reviewing-proposal', { phase: 'reviewing', node: 'proposal-review', task: 'x', work: 'active' }, '提案评审'],
+  ['reviewing-verify', { phase: 'reviewing', node: 'verify-standalone', task: 'x', work: 'active' }, '独立验收'],
+  ['blocked', { phase: 'blocked', node: null, work: 'blocked', blockReason: 'x' }, 'Gate 已冻结'],
+  ['complete', { phase: 'complete', node: null, work: 'active' }, 'Gate 已完成'],
+]
+const variantPrompts = variantCases.map(([label, state, marker]) => {
+  saveState(workspace, agent, { ...defaultState(), ...state })
+  return [label, gateSection.text({ agent }).includes(marker)]
+})
+check('phase and reviewing variants keep their text', variantPrompts.every(([, ok]) => ok), JSON.stringify(variantPrompts))
+saveState(workspace, agent, defaultState())
 check('discuss denies worker dispatch', (await exec('subagent', { description: 'x', prompt: 'x' })).kind === 'deny')
 check('discuss denies apply_patch', (await exec('apply_patch', { input: '*** Begin Patch\n*** Add File: src/x.ts\n+x\n*** End Patch' })).kind === 'deny')
 
@@ -183,11 +215,19 @@ const startHost = fakeHost(startWorkspace)
 const startAgent = { id: 'session-start', session: { header: {} } }
 const startedPlan = await startHost.tools.gate_start_phase.execute({ node: 'plan' }, { agent: startAgent })
 check('gate_start_phase starts planning after authorization', startedPlan.ok === true && startedPlan.node === 'plan')
-const startImplWorkspace = makeWorkspace()
-const startImplHost = fakeHost(startImplWorkspace)
+const startImplSurface = makeWorkspace()
+const startImplHost = fakeHost(startImplSurface)
 const startImplAgent = { id: 'session-start-impl', session: { header: {} } }
 const startedImplement = await startImplHost.tools.gate_start_phase.execute({ node: 'implement', brief: '修一个错别字' }, { agent: startImplAgent })
 check('gate_start_phase starts direct implement', startedImplement.ok === true && startedImplement.task === '修一个错别字')
+
+const fixWorkspace = makeWorkspace()
+const fixHost = fakeHost(fixWorkspace)
+const fixAgent = { id: 'session-fix', session: { header: {} } }
+const fixStarted = await fixHost.commands['gate-fix-bug'].handler({ agent: fixAgent, rawInput: '修复空指针', attachments: [] })
+check('gate-fix-bug enters fix node', fixStarted.kind === 'success' && loadState(fixWorkspace, fixAgent).node === 'fix-bug')
+const fixDone = await fixHost.tools.gate_record.execute({ node: 'fix-bug', workerSessionIds: ['worker-test'] }, { agent: fixAgent })
+check('fix-bug returns to discuss', fixDone.ok === true && fixDone.phase === 'discuss')
 
 await run('gate-enter-plan')
 check('plan command enters orchestrating', stateOf().phase === 'orchestrating' && stateOf().node === 'plan')
@@ -229,6 +269,7 @@ check('verify passes back to discuss', verified.phase === 'discuss', JSON.string
 check('verify records execution-bound evidence hash', stateOf().verification?.executionBound === true && stateOf().verification?.selfReported === false && /^[a-f0-9]{64}$/u.test(stateOf().verification?.evidence?.[0]?.sha256 ?? ''))
 check('status shows verify evidence', (await run('gate-status', '')).text.includes('verify：PASS（verified）'))
 
+saveState(workspace, agent, { ...stateOf(), planReady: true, task: 'work' })
 await run('gate-enter-implement', 'work')
 await record({ node: 'implement' })
 await record({ node: 'code-review', findings: [{ id: 'C1' }] })
@@ -403,13 +444,24 @@ const workerHost = fakeHost(workspace, rootAgent)
 saveState(workspace, rootAgent, { ...defaultState(), phase: 'orchestrating', node: 'plan', task: 'work' })
 const workerSection = workerHost.sections.find(section => section.name === 'gate:protocol')
 const workerPrompt = workerSection.text({ agent: childAgent })
-check('worker prompt uses root node', workerPrompt.includes('Gate worker') && workerPrompt.includes('节点：plan') && !workerPrompt.includes('只读讨论') && !workerPrompt.includes('gate-planning'))
+check('worker prompt uses root node', workerPrompt.includes('Gate worker') && workerPrompt.includes('gate_note_write') && !workerPrompt.includes('只读讨论') && !workerPrompt.includes('## 节点方法'))
 check('worker prompt does not ask the worker to load methods', !workerPrompt.includes('## Method files') && workerPrompt.includes('主代理已经加载'))
-check('main prompt names the exact phase skill', workerSection.text({ agent: rootAgent }).includes('## 阶段方法') && workerSection.text({ agent: rootAgent }).includes('当前节点：plan') && workerSection.text({ agent: rootAgent }).includes('`gate-planning`'))
-check('main prompt requires a fresh skill load per dispatch', workerSection.text({ agent: rootAgent }).includes('## 派发规则') && workerSection.text({ agent: rootAgent }).includes('加载“阶段方法”') && !workerSection.text({ agent: rootAgent }).includes('## Method files'))
+const workerStatus = await workerHost.tools.gate_status.execute({}, { agent: childAgent })
+check('gate_status reads root state for a worker', workerStatus.ok === true && workerStatus.text.includes('节点：plan'))
+const workerCommandStatus = await workerHost.commands['gate-status'].handler({ agent: childAgent, rawInput: '', attachments: [] })
+check('/gate-status matches gate_status for a worker', workerCommandStatus.text === workerStatus.text)
+saveState(workspace, rootAgent, { ...defaultState(), phase: 'reviewing', node: 'verify-standalone', task: 'x', work: 'active' })
+check('verify-standalone worker gets its method', workerSection.text({ agent: childAgent }).includes('gate-user-verify'))
+saveState(workspace, rootAgent, { ...defaultState(), phase: 'orchestrating', node: 'fix-bug', task: 'x', work: 'active' })
+check('fix-bug worker gets its process', workerSection.text({ agent: childAgent }).includes('Process 1-9'))
+saveState(workspace, rootAgent, { ...defaultState(), phase: 'orchestrating', node: 'plan', task: 'work' })
+check('main prompt names the exact phase skill', workerSection.text({ agent: rootAgent }).includes('## 节点方法') && workerSection.text({ agent: rootAgent }).includes('| plan |') && workerSection.text({ agent: rootAgent }).includes('`gate-planning`'))
+check('main prompt requires a fresh skill load per dispatch', workerSection.text({ agent: rootAgent }).includes('## 派发规则') && workerSection.text({ agent: rootAgent }).includes('先调用 gate_status 确认当前节点') && !workerSection.text({ agent: rootAgent }).includes('当前节点：plan'))
 check('plan worker generic write is denied', (await execWith(workerHost, childAgent, 'write', { file_path: '.agents/notes/proposed/feature/x.md' })).kind === 'deny')
 const noteWrite = await workerHost.tools.gate_note_write.execute({ path: 'feature/2026-11-10-y.md', content: '# Note\n' }, { agent: childAgent })
 check('plan worker can write a proposed note', noteWrite.ok === true)
+const noteWritePrefixed = await workerHost.tools.gate_note_write.execute({ path: 'proposed/feature/2026-11-10-z.md', content: '# Note\n' }, { agent: childAgent })
+check('proposed/ path prefix is accepted', noteWritePrefixed.ok === true && existsSync(path.join(workspace, '.agents', 'notes', 'proposed', 'feature', '2026-11-10-z.md')))
 check('plan worker cannot write code', (await execWith(workerHost, childAgent, 'write', { file_path: 'src/x.ts' })).kind === 'deny')
 check('main agent can write in orchestrating', (await execWith(workerHost, rootAgent, 'write', { file_path: 'docs/x.md' })).kind === 'allow')
 check('child cannot call gate_record', (await workerHost.tools.gate_record.execute({ node: 'plan', task: 'x' }, { agent: childAgent })).code === 'root-only')
@@ -434,8 +486,18 @@ const fallbackHost = fakeHost(workspace, undefined, { subagents: { rootOf: () =>
 const fallbackChild = { id: 'fallback-child', session: { header: { origin: 'subagent', parentSession: rootAgent.id } } }
 saveState(workspace, rootAgent, { ...defaultState(), phase: 'orchestrating', node: 'plan', task: 'work' })
 const fallbackPrompt = fallbackHost.sections.find(section => section.name === 'gate:protocol').text({ agent: fallbackChild })
-check('worker prompt falls back to durable parent lineage', fallbackPrompt.includes('Gate worker') && fallbackPrompt.includes('节点：plan') && !fallbackPrompt.includes('## Method files'))
+check('worker prompt falls back to durable parent lineage', fallbackPrompt.includes('Gate worker') && fallbackPrompt.includes('gate_note_write') && !fallbackPrompt.includes('## 节点方法'))
 check('fallback child cannot call gate_record', (await fallbackHost.tools.gate_record.execute({ node: 'plan', task: 'x' }, { agent: fallbackChild })).code === 'root-only')
+const fallbackStatus = await fallbackHost.tools.gate_status.execute({}, { agent: fallbackChild })
+check('gate_status rejects a synthetic root without a session', fallbackStatus.ok === false && fallbackStatus.code === 'root-unresolved')
+const orphanHost = fakeHost(workspace, undefined, { subagents: { rootOf: () => { throw new Error('no owner') } } })
+const orphanAgent = { id: 'orphan-worker', session: { header: { origin: 'subagent' } } }
+const orphanStatus = await orphanHost.tools.gate_status.execute({}, { agent: orphanAgent })
+check('gate_status rejects an orphan worker', orphanStatus.ok === false && orphanStatus.code === 'root-unresolved')
+const noWorkspaceHost = fakeHost(undefined)
+const noWorkspaceAgent = { id: 'no-workspace', session: { header: {} } }
+const noWorkspaceStatus = await noWorkspaceHost.tools.gate_status.execute({}, { agent: noWorkspaceAgent })
+check('gate_status reports state-unavailable without a workspace', noWorkspaceStatus.ok === false && noWorkspaceStatus.code === 'state-unavailable')
 
 const outside = mkdtempSync(path.join(os.tmpdir(), 'gate-outside-'))
 const cwdHost = fakeHost(workspace, undefined, { cwd: outside })
@@ -485,12 +547,12 @@ await Promise.resolve()
 await Promise.resolve()
 const projectionSection = projectionHost.sections.find(section => section.name === 'gate:protocol')
 check('projection starts in discuss', projection.stateOf(projectionAgent.session).phase === 'discuss')
-check('projection prompt starts in discuss', projectionSection.text({ agent: projectionAgent }).includes('状态：discuss'))
+check('projection prompt starts in discuss', projectionSection.text({ agent: projectionAgent }).includes('只读讨论') && !projectionSection.text({ agent: projectionAgent }).includes('状态：'))
 await projectionHost.commands['gate-enter-plan'].handler({ agent: projectionAgent, rawInput: '', attachments: [] })
 projection.apply(projectionAgent.session, { type: 'command/run', data: { commandId: 'cmd-1', name: 'gate-enter-plan', args: '' } })
 projection.apply(projectionAgent.session, { type: 'command/done', data: { commandId: 'cmd-1', kind: 'success' } })
 check('projection folds plan command', projection.stateOf(projectionAgent.session).phase === 'orchestrating' && projection.stateOf(projectionAgent.session).node === 'plan')
-check('projection prompt reads plan', projectionSection.text({ agent: projectionAgent }).includes('节点：plan'))
+check('projection prompt reads plan', projectionSection.text({ agent: projectionAgent }).includes('## /gate-enter-plan 编排') && projectionSection.text({ agent: projectionAgent }).includes('| plan |'))
 const projectedRecord = await projectionHost.tools.gate_record.execute({ node: 'plan', task: 'work', workerSessionIds: ['worker-test'], noteDecision: 'new', noteSearch: 'test', notePaths: [{ path: addTestNote(projectionWorkspace), class: 'feature', lifecycle: 'proposed' }] }, { agent: projectionAgent })
 projection.apply(projectionAgent.session, { type: 'tool/result', data: { meta: { gate: { state: projectedRecord.state } } } })
 check('projection folds gate_record result', projection.stateOf(projectionAgent.session).node === 'plan-review')
@@ -582,6 +644,7 @@ const lifecycleVerify = await lifecycleHost.tools.gate_record.execute({
 check('verify PASS enters note-lifecycle', lifecycleVerify.ok === true && lifecycleVerify.state.node === 'note-lifecycle')
 const lifecyclePrompt = lifecycleHost.sections.find(section => section.name === 'gate:protocol').text({ agent: lifecycleAgent })
 check('note-lifecycle prompt does not dispatch workers', lifecyclePrompt.includes('Note lifecycle') && lifecyclePrompt.includes('不派 worker') && !lifecyclePrompt.includes('## 派发规则'))
+check('note-lifecycle prompt renders its protocol once', (lifecyclePrompt.match(/## Note lifecycle/gu) ?? []).length === 1 && !lifecyclePrompt.includes('## /gate-enter-implement 编排'))
 const finalized = await lifecycleHost.tools.gate_note_finalize.execute({}, { agent: lifecycleAgent })
 check('gate_note_finalize moves note', finalized.ok === true && existsSync(path.join(lifecycleWorkspace, '.agents', 'notes', 'implemented', 'process', '2026-11-10-feature.md')), JSON.stringify(finalized))
 const implementedContent = readFileSync(path.join(lifecycleWorkspace, '.agents', 'notes', 'implemented', 'process', '2026-11-10-feature.md'), 'utf8')
@@ -590,6 +653,53 @@ const noteVerified = await lifecycleHost.tools.gate_note_verify.execute({}, { ag
 check('gate_note_verify sets noteVerified', noteVerified.ok === true && noteVerified.state.noteVerified === true)
 const lifecycleDone = await lifecycleHost.tools.gate_record.execute({ node: 'note-lifecycle' }, { agent: lifecycleAgent })
 check('note-lifecycle returns to discuss', lifecycleDone.ok === true && lifecycleDone.state.phase === 'discuss' && lifecycleDone.state.task === null)
+
+const sequenceWorkspace = makeWorkspace()
+mkdirSync(path.join(sequenceWorkspace, '.artifacts'), { recursive: true })
+writeFileSync(path.join(sequenceWorkspace, '.artifacts', 'verify.txt'), 'verified\n')
+const sequenceAgent = { id: 'session-sequence', session: { header: {} } }
+const sequenceHost = fakeHost(sequenceWorkspace)
+const sequenceSection = sequenceHost.sections.find(section => section.name === 'gate:protocol')
+const sequenceTexts = []
+const sequenceLabels = []
+const renderSequence = label => { sequenceLabels.push(label); sequenceTexts.push(sequenceSection.text({ agent: sequenceAgent })) }
+const runSequence = async action => { await action(); }
+renderSequence('discuss')
+await runSequence(() => sequenceHost.commands['gate-enter-plan'].handler({ agent: sequenceAgent, rawInput: '', attachments: [] }))
+renderSequence('plan')
+const sequenceNote = addTestNote(sequenceWorkspace)
+await runSequence(() => sequenceHost.tools.gate_record.execute({ node: 'plan', task: 'work', workerSessionIds: ['worker-test'], noteDecision: 'new', noteSearch: 'search', notePaths: [{ path: sequenceNote, class: 'feature', lifecycle: 'proposed' }] }, { agent: sequenceAgent }))
+renderSequence('plan-review')
+await runSequence(() => sequenceHost.tools.gate_record.execute({ node: 'plan-review', findings: [{ id: 'F1' }], reviewAxes: { standards: { findings: [] }, spec: { findings: [] }, architecture: { findings: [] } }, workerSessionIds: ['worker-test'] }, { agent: sequenceAgent }))
+renderSequence('plan-revise')
+await runSequence(() => sequenceHost.tools.gate_record.execute({ node: 'plan-revise', workerSessionIds: ['worker-test'] }, { agent: sequenceAgent }))
+renderSequence('plan-review-2')
+await runSequence(() => sequenceHost.tools.gate_record.execute({ node: 'plan-review', findings: [], reviewAxes: { standards: { findings: [] }, spec: { findings: [] }, architecture: { findings: [] } }, workerSessionIds: ['worker-test'] }, { agent: sequenceAgent }))
+renderSequence('discuss-plan-ready')
+await runSequence(() => sequenceHost.commands['gate-enter-implement'].handler({ agent: sequenceAgent, rawInput: '', attachments: [] }))
+renderSequence('implement')
+await runSequence(() => sequenceHost.tools.gate_record.execute({ node: 'implement', workerSessionIds: ['worker-test'] }, { agent: sequenceAgent }))
+renderSequence('code-review')
+await runSequence(() => sequenceHost.tools.gate_record.execute({ node: 'code-review', findings: [{ id: 'C1' }], reviewAxes: { standards: { findings: [] }, spec: { findings: [] } }, workerSessionIds: ['worker-test'] }, { agent: sequenceAgent }))
+renderSequence('implement-revise')
+await runSequence(() => sequenceHost.tools.gate_record.execute({ node: 'implement-revise', workerSessionIds: ['worker-test'] }, { agent: sequenceAgent }))
+renderSequence('code-review-2')
+await runSequence(() => sequenceHost.tools.gate_record.execute({ node: 'code-review', findings: [], reviewAxes: { standards: { findings: [] }, spec: { findings: [] } }, workerSessionIds: ['worker-test'] }, { agent: sequenceAgent }))
+renderSequence('verify')
+await runSequence(() => sequenceHost.tools.gate_record.execute({ node: 'verify', verification: { commands: ['node verify.js'], evidence: ['.artifacts/verify.txt'], toolResults: ['tool-result-1'], passed: true }, workerSessionIds: ['worker-test'] }, { agent: sequenceAgent }))
+renderSequence('note-lifecycle')
+await runSequence(() => sequenceHost.tools.gate_note_finalize.execute({}, { agent: sequenceAgent }))
+renderSequence('note-lifecycle-finalized')
+await runSequence(() => sequenceHost.tools.gate_note_verify.execute({}, { agent: sequenceAgent }))
+renderSequence('note-lifecycle-verified')
+await runSequence(() => sequenceHost.tools.gate_record.execute({ node: 'note-lifecycle' }, { agent: sequenceAgent }))
+renderSequence('discuss-done')
+const sequenceChanges = sequenceLabels.filter((label, index) => index > 0 && sequenceTexts[index] !== sequenceTexts[index - 1])
+check('prompt changes only at variant boundaries', JSON.stringify(sequenceChanges) === JSON.stringify(['plan', 'discuss-plan-ready', 'implement', 'note-lifecycle', 'discuss-done']), JSON.stringify(sequenceChanges))
+check('plan node changes keep the prompt stable', sequenceTexts[2] === sequenceTexts[3] && sequenceTexts[3] === sequenceTexts[4])
+check('implement node changes keep the prompt stable', sequenceTexts[7] === sequenceTexts[8] && sequenceTexts[8] === sequenceTexts[9] && sequenceTexts[9] === sequenceTexts[10])
+check('note-lifecycle status changes keep the prompt stable', sequenceTexts[11] === sequenceTexts[12] && sequenceTexts[12] === sequenceTexts[13])
+check('static prompt has the method table and no status lines', sequenceTexts[1].includes('## 节点方法') && sequenceTexts[1].includes('| verify-standalone |') && !sequenceTexts[1].includes('状态：') && !sequenceTexts[1].includes('rounds：') && !sequenceTexts[1].includes('notes：'))
 
 const invalidNoteWorkspace = mkdtempSync(path.join(os.tmpdir(), 'gate-invalid-note-'))
 addGate(invalidNoteWorkspace)
@@ -606,6 +716,14 @@ if (failures > 0) {
   process.exit(1)
 }
 console.log('\nALL CHECKS PASSED')
+
+
+
+
+
+
+
+
 
 
 

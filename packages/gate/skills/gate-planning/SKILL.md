@@ -8,6 +8,8 @@ user-invocable: false
 
 主 agent 在派发前自行读取本方法，给 worker 一份自包含任务：具体工作项、约束和规划规则。worker 不应加载本技能或其他 gate 方法文件。worker prompt 只给计划内容；不要附带项目环境验证（`package.json`、Node 版本、git 状态、文件存在性、初始化 smoke 结果）。
 
+任务模板：本技能 `assets/worker-briefs/gate-enter-plan.md`；派发前读取并填写。
+
 # 规划
 
 ## 项目绑定
@@ -58,7 +60,7 @@ user-invocable: false
 
 设计定稿遵循 技术设计规则（[rfc.md](./rfc.md) ） 的合同稳定性与评审条件。Note 的 proposed/implemented 表示交付生命周期，不代替评审和批准证据。
 
-使用项目既有领域语言和适用架构约束。领域术语与模型变化使用 `domain-modeling`；需要为架构决定单独建档时，使用 `adr` 的准入条件判断，在相关 Agent Note 中记录决定。
+使用项目既有领域语言和适用架构约束。领域术语与模型变化使用 `gate-domain-modeling`；需要为架构决定单独建档时，使用 `adr` 的准入条件判断，在相关 Agent Note 中记录决定。
 
 ### 决定权限
 
@@ -83,4 +85,8 @@ Planning 完成需要同时满足：
 - 主代理报告 Plan Review 无未解决发现（不由本 worker 自行宣称）。
 
 若用户只要求规划，交付规划结果与评审证据后结束。端到端任务把 receipt 交回 gate；执行授权由 gate 单独核对，不在本 worker 内推进。
+
+
+
+
 

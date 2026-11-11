@@ -8,6 +8,8 @@ user-invocable: false
 
 主 agent 在派发前自行读取本方法，给 subagent worker 一份自包含任务：已接受的范围、约束、验收检查和实现规则。subagent worker 不应加载本技能或其他 gate 方法文件。
 
+任务模板：本技能 `assets/worker-briefs/gate-enter-implement.md`。
+
 ## 实现
 
 ## 1. 入口条件
@@ -73,4 +75,8 @@ gate 可能返回实质 findings。按属主处理：
 - 剩余风险、blocker 或需要决定的点
 
 不要执行 `gate-verify`、不要把工作项标完成、不要推进 gate。verify 节点和最终完成由 gate 负责。
+
+
+
+
 

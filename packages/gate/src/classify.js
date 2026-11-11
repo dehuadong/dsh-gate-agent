@@ -2,35 +2,12 @@
 
 import path from 'node:path'
 
-/** Compare paths case-insensitively on Windows/macOS, byte-wise on Linux. */
-export function foldPath(value) {
-  const text = String(value ?? '').replaceAll('\\', '/').replace(/\/+$/u, '')
-  return process.platform === 'win32' || process.platform === 'darwin' ? text.toLowerCase() : text
-}
-
-/** Whether `relative` is `base` or below it, using platform case folding. */
-export function isWithin(relative, base) {
-  const child = foldPath(relative)
-  const parent = foldPath(base)
-  if (parent === '') return true
-  return child === parent || child.startsWith(`${parent}/`)
-}
-
 /** Classify a file target relative to the workspace root and the session cwd. */
-export function classifyPath(root, value, policy, cwd = root) {
+export function classifyPath(root, value, cwd = root) {
   const absolute = path.resolve(cwd, String(value ?? ''))
   const relative = path.relative(root, absolute).replaceAll('\\', '/')
   const outside = relative === '..' || relative.startsWith('../') || path.isAbsolute(relative)
-  const protectedPath = !outside && policy.protected.some(entry => isWithin(relative, entry))
-  const protectedAncestor = !outside && policy.protected.some(entry => isWithin(entry, relative))
-  const protectedTarget = protectedPath || protectedAncestor
-  return {
-    absolute,
-    relative,
-    outside,
-    protected: protectedTarget,
-    protectedAncestor,
-  }
+  return { absolute, relative, outside }
 }
 
 /** Explicit write verbs recognized in one shell statement. */
@@ -85,12 +62,12 @@ function addTarget(targets, token, map) {
 }
 
 /** Decide one shell statement: which explicit paths it writes. */
-function segmentAccess(text, root, policy, cwd, map) {
+function segmentAccess(text, root, cwd, map) {
   if (/\bgit\s+(?:status|add|commit|push)\b/iu.test(text)) {
-    return { write: false, protectedTargets: [], outsideTargets: [] }
+    return { write: false, outsideTargets: [] }
   }
   if (/\bgit\s+(?:checkout|reset|clean)\b/iu.test(text)) {
-    return { write: true, protectedTargets: [], outsideTargets: [] }
+    return { write: true, outsideTargets: [] }
   }
   const raw = []
   const verb = WRITE_VERB.exec(text)
@@ -100,14 +77,12 @@ function segmentAccess(text, root, policy, cwd, map) {
   }
   for (const token of redirectionTargets(text)) addTarget(raw, token, map)
   for (const token of pipeTargets(text)) addTarget(raw, token, map)
-  const protectedTargets = []
   const outsideTargets = []
   for (const value of raw) {
-    const target = classifyPath(root, path.resolve(cwd, value), policy)
-    if (target.outside) { outsideTargets.push(target.absolute); continue }
-    if (target.protected) protectedTargets.push(target.relative)
+    const target = classifyPath(root, path.resolve(cwd, value))
+    if (target.outside) outsideTargets.push(target.absolute)
   }
-  return { write: raw.length > 0 || WRITE_VERB.test(text), protectedTargets, outsideTargets }
+  return { write: raw.length > 0 || WRITE_VERB.test(text), outsideTargets }
 }
 
 /** Split statements; pipelines stay in one statement. */
@@ -116,12 +91,11 @@ function segments(text) {
 }
 
 /** Summarize explicit writes. */
-export function shellAccess(command, root, policy, cwd = root) {
+export function shellAccess(command, root, cwd = root) {
   const map = assignments(command)
-  const parts = segments(command).map(part => segmentAccess(part, root, policy, cwd, map)).filter(item => item.write)
+  const parts = segments(command).map(part => segmentAccess(part, root, cwd, map)).filter(item => item.write)
   return {
     write: parts.length > 0,
-    protectedTargets: parts.flatMap(item => item.protectedTargets ?? []),
     outsideTargets: parts.flatMap(item => item.outsideTargets ?? []),
   }
 }

@@ -1,6 +1,6 @@
 # dsh-gate-agent
 
-Host 插件：按阶段控制 agent 的写入与评审流程，提供 `/gate-*` 命令、`gate_record` 工具和 5 个专项技能。
+Host 插件：按阶段控制 agent 的写入与评审流程，提供 `/gate-*` 命令、`gate_record` / `gate_status` 工具和专项技能。
 
 > 这是流程门禁，不是 OS 级安全边界。硬拒绝由 `ctx.tools.guard` 提供；gate 会 append `sandbox/mode`（planning/implement workspace-write，review/verify read-only），但真正需要强制隔离时仍使用 DSH 的 sandbox/approval。未知工具与任意 shell 语义不会被完整分析。
 
@@ -20,7 +20,8 @@ Host 插件：按阶段控制 agent 的写入与评审流程，提供 `/gate-*` 
 | `/gate-enter-implement [简单说明]` | 可选 | 进入 `orchestrating/implement`；复用已通过 planning 的 task，或直接用简述作为当前事项 |
 | `/gate-docs` | 无 | 文档治理，不调用技能 |
 | `/gate-implement-review [范围]` | 可选 | 单独只读 code review，只输出 findings；无参数时按上下文确定范围 |
-| `/gate-code-verify [范围]` | 可选 | 单独只读验收；子代理使用 to-verify，主 agent 不加载 |
+| `/gate-code-verify [范围]` | 可选 | 单独只读验收；子代理使用 gate-user-verify，主 agent 不加载 |
+| `/gate-fix-bug [缺陷简述]` | 可选 | 派 fix worker 使用 gate-fix-bug 修复已授权实现缺陷，完成后回 discuss |
 | `/gate-propose-review [提案]` | 可选 | 单独提案评审，走 gate-plan-review 三轴 |
 | `/gate-note-verify` | 无 | 只读检查 notes tree/format/lifecycle/archived |
 | `/gate-note-archive <note> [--superseded-by <new>]` | 必需 Note 路径 | 归档 implemented Note，写 Archived、移动、封印、报告入站链接 |
@@ -29,11 +30,13 @@ Host 插件：按阶段控制 agent 的写入与评审流程，提供 `/gate-*` 
 | `/gate-block [原因]` | 可选 | 手动暂停：保留当前节点；手动 block 后用 `/gate-resume` 回原节点 |
 | `/gate-resume` | 无 | 解冻 block：回到 block 前的节点；轮次耗尽回 discuss |
 | `/gate-return-discuss` | 无 | 用户手动回到 discuss |
-| `/gate-status` | 无 | 只读状态，包括 plan 就绪、轮次与 verify 结果 |
+| `/gate-status` | 无 | 只读状态，包括 plan 就绪、轮次与 verify 结果；与模型工具 `gate_status` 共用同一渲染 |
 
 只有**启动或继续编排**的命令在一次 handler 内写状态并立即 `agent.followup`：`/gate-enter-plan`、`/gate-enter-implement`、`/gate-docs`、`/gate-implement-review`、`/gate-code-verify`、`/gate-propose-review`，以及回到 active phase 的 `/gate-resume`。`/gate-init` 也 follow-up 一次，用于首次初始化反馈。消息携带 `rawInput`、当前 phase 和命令名，source 是 `gate-command`。`/gate-block`、`/gate-return-discuss` 只改状态，`/gate-status` 只读，都不 follow-up。首页提交命令由宿主创建 session；命令本身不创建 session。
 
 进入阶段不等于执行。主代理派发 worker，再用 `gate_record` 推进节点。
+
+root `gate:protocol` 只随 protocol variant 切换（discuss / plan / implement / note-lifecycle / fix-bug / docs / reviewing-* / blocked / complete）；同一 variant 内的节点切换不改变 root prompt；worker prompt 仍按 worker 的 node 渲染。当前节点、轮次和 verify 结果不在 prompt 中：主代理在每次派发前调用只读 `gate_status`，再按静态“节点方法”表加载对应技能。
 
 离开 discuss 不要求用户输入 slash command：用户在对话或 `ask_user_question` 中明确授权后，主 agent 可调用 `gate_start_phase({node:'plan'|'implement', brief})` 进入阶段。`/gate-enter-plan` / `/gate-enter-implement` 仍是用户直接进入的入口。
 
@@ -112,10 +115,20 @@ gate_record({ node: 'verify', verification, workerSessionIds })
 /gate-code-verify
 ```
 
-- 只读；主 agent 不加载 `to-verify`，只派子代理。
-- 子代理按 `to-verify` 执行验收并按 Step 6 汇报；可运行测试/命令作为证据，但不得修改测试、产品代码、需求或设计，也不要自行提交。主 agent 汇总后输出给用户。
+- 只读；主 agent 不加载 `gate-user-verify`，只派子代理。
+- 子代理按 `gate-user-verify` 执行验收并按 Step 6 汇报；可运行测试/命令作为证据，但不得修改测试、产品代码、需求或设计，也不要自行提交。主 agent 汇总后输出给用户。
 - PASS 后 `gate_record({ node: 'verify-standalone', verification, workerSessionIds })` 会先执行一次 `git add -A` + `git commit`，再回 discuss；非 git 或没有改动跳过。
 - 不进入 note-lifecycle；这是独立验收，不替代 implement 流程的最终 Verify。
+
+### 缺陷修复
+
+```text
+/gate-fix-bug 修复空指针异常
+```
+
+- 主 agent 读取 `gate-fix-bug`，按该技能的 `assets/worker-briefs/gate-fix-bug.md` 派 fix worker 执行 Process 1-9。
+- 修复完成后，主 agent 加载 `gate-code-review` 提炼评审规则，按 `gate-fix-bug` 技能的 `assets/worker-briefs/fix-bug-review.md` 另派独立 review worker 只报 findings；findings 交回 fix worker 修正。
+- 完成后 `gate_record({ node: 'fix-bug', workerSessionIds })`，workerSessionIds 包含 fix 和 review worker；gate 自动提交并回 discuss。
 
 ### 提案评审
 
@@ -123,7 +136,7 @@ gate_record({ node: 'verify', verification, workerSessionIds })
 /gate-propose-review
 ```
 
-- 只读；加载 `gate-plan-review`，覆盖 Standards、Spec、Architecture 三轴。
+- 只读；主 agent 加载 `gate-plan-review`，读取该技能 `assets/worker-briefs/plan-review.md` 写 review 任务，覆盖 Standards、Spec、Architecture 三轴。
 - 主 agent 按规模决定一个或多个 review worker。
 - 结束后 `gate_record({ node: 'proposal-review', findings, reviewAxes, workerSessionIds })`，回到 discuss。
 - 不自动 plan-revise；findings 由用户决定后续。
@@ -237,13 +250,25 @@ gate_record({
 })
 ```
 
-- `node`：`plan`、`plan-review`、`plan-revise`、`implement`、`code-review`、`implement-revise`、`verify`、`docs`、`review`。
+- `node`：`plan`、`plan-review`、`proposal-review`、`plan-revise`、`implement`、`code-review`、`implement-revise`、`verify`、`verify-standalone`、`code-review-standalone`、`fix-bug`、`note-lifecycle`、`docs`。
 - `plan` 必须带 `task`。
 - worker 节点必须带 `workerSessionIds`；id 必须是当前 root 的 subagent tree child 且已 settled，否则拒绝推进。
-- `plan-review` 与 `proposal-review` 必须带 `reviewAxes.standards`、`reviewAxes.spec`、`reviewAxes.architecture` 三轴；`code-review`/`review` 必须带 `standards` 与 `spec` 两轴；缺轴不能通过 review。
+- `plan-review` 与 `proposal-review` 必须带 `reviewAxes.standards`、`reviewAxes.spec`、`reviewAxes.architecture` 三轴；`code-review`/`code-review-standalone` 必须带 `standards` 与 `spec` 两轴；缺轴不能通过 review。
 - 每个轴的 `reviewAxes.<axis>.findings` 必须是数组；`workerSessionIds` 与实际派发的 review worker 数量一致，由主 agent 按规模决定。
 - `requiresDiscussion=true`：进入 `blocked`，`blockReason=needs-user-decision`；用户 `/gate-resume` 后继续 discuss。
 - review 达到 `reviewLimit` 仍有 findings：进入 blocked，设置 `exhausted.plan/code`；不能靠重新 `/gate-enter-implement` 绕过。
+
+## gate_status
+
+只读，root 和 worker 可调用；worker 读所属 root 的状态。
+
+```text
+gate_status()
+```
+
+返回 phase/node/task/work/blockReason/planReady/rounds，以及按条件出现的 notes/exhausted/verify 行；blocked 时还有“解冻后”行。格式与 `/gate-status` 相同。失败返回 `root-unresolved`（worker 的 root 不可解析）或 `state-unavailable`（工作区不可解析）。
+
+主代理在每次派 subagent 前、推进节点前，以及 compaction 后应先调用它确认当前节点；`gate_record` 的返回值仍带 state 快照。
 
 ## Verify 证据
 
@@ -284,6 +309,19 @@ gate_record({
 - verify 的 `toolResults` 会用 `sessionQuery.readSession` 在 worker session log 中绑定到真实 `tool/result` callId；`commands`/`evidence` 仍是主代理转述，不能当成完整独立执行证明。
 - `ctx.tools.restrict` 只掩全局工具；scoped 写工具仍可能出现在工具面，硬拒绝由 `ctx.tools.guard` 保证。
 - 旧 gate 迁移仍属后续 B 工作项；session projection、guard/restrict/sandbox、worker tree 证据与 review axes 已在 T1/T2/T3 实现。
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

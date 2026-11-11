@@ -8,6 +8,8 @@ user-invocable: false
 
 主 agent 在派发前自行读取本方法，把工作项、Note、固定点和评审规则交给一个或多个 review worker；worker 数量由主 agent 按规模决定。worker 不应加载本技能或其他 gate 方法文件。worker prompt 只包含这些计划内容；不要附带项目环境验证（`package.json`、Node 版本、git 状态、文件存在性、初始化 smoke 结果）。
 
+任务模板：本技能 `assets/worker-briefs/plan-review.md`；派发前读取并填写。
+
 ## 计划评审
 
 评审被评审的工作项、范围、产品合同与 Agent Note；不修改规划，不替 planning 做决定。只评审计划内容，不评审项目环境、初始化结果、文件存在性或运行版本。
@@ -54,7 +56,7 @@ user-invocable: false
 - 产品范围、行为与验收问题报告给工作项；
 - 本次规划的技术设计问题报告给 Agent Note；引用输入的问题按项目配置反馈其属主；
 - 状态、评审与批准证据报告给工作项；
-- 领域术语问题报告给 技能`domain-modeling` 的属主，技术决定报告给相关 Agent Note。
+- 领域术语问题报告给 技能`gate-domain-modeling` 的属主，技术决定报告给相关 Agent Note。
 
 由 planning worker 决定并执行修正；本 worker 不更新工作项、Note 或就绪状态。
 
@@ -78,4 +80,8 @@ user-invocable: false
 评审通过只报告结论，不自动构成批准或执行授权，也不由本 worker 更新工作项或就绪状态。
 
 没有通过时，报告未解决问题及其属主；由 planning worker 修正，gate 再安排复审。普通实现细节可以保持开放。
+
+
+
+
 

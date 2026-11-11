@@ -1,11 +1,16 @@
 ---
 name: gate-verify
 description: Gate 验收方法：主 agent 读取后提炼并派发；worker 不加载技能。
+user-invocable: false
 ---
 
 ## Main agent use
 
 主 agent 在派发前自行读取本方法，给 verify worker：工作项、验收条件、受保护基线和验证规则。worker 不应加载本技能或其他 gate 方法文件。
+
+任务模板：本技能 `assets/worker-briefs/gate-verify.md`。
+
+
 
 ## 验收
 
@@ -60,3 +65,9 @@ gate 把修正路由给属主 worker，然后再次验证。授权合同变更�
 ### 完成
 
 报告 PASS/FAIL/BLOCKED 和证据。不要更新工作项、转换决策记录或完成 gate；这些由 gate 接受报告后处理。
+
+
+
+
+
+

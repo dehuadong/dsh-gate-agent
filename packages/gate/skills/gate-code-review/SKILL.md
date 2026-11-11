@@ -8,6 +8,8 @@ user-invocable: false
 
 主 agent 读取本方法后，按改动规模派一个或多个 review worker；worker 不加载本技能或其他 gate 方法文件。`gate_record({node:'code-review'})` 需要 `reviewAxes.standards.findings` 与 `reviewAxes.spec.findings`；worker 数量由主 agent 决定，但两轴都必须产出。
 
+任务模板：本技能 `assets/worker-briefs/gate-implement-review.md`。
+
 Two-axis review of the requested change scope, including uncommitted work when applicable:
 
 - **Standards**: does the change conform to this repo's documented standards and current authoritative decisions?
@@ -105,5 +107,9 @@ gate_record({node:'code-review', findings, reviewAxes, workerSessionIds})
 ```
 
 `reviewAxes` 必须包含 `standards` 与 `spec`；空的 `findings` 表示该轴通过。worker 不修复 findings。
+
+
+
+
 
 

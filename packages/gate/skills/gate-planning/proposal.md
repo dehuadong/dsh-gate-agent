@@ -47,3 +47,5 @@ why、背景、约束
 - 评审通过、批准、执行授权是三件事；
 - 只有规划内容通过、所需批准齐备且没有阻塞时，才标记为就绪；
 - proposed → implemented 由 `write-agent-notes` 在实现与验证完成后处理，planning 不提前转换。
+
+

@@ -30,3 +30,5 @@
 
 `scripts/agent-note-tree.ts` 定义 `AGENT_NOTE_CLASSES` 常量；未知 class 文件夹、lifecycle 根下的散落 `.md` 都会报错。新增 class 必须同时改常量和本文档，否则检查直接红。
 
+
+

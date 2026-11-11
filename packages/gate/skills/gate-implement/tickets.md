@@ -110,3 +110,5 @@ Update and close completed tickets according to the configured tracker workflow.
 Commit completed ticket work when the repository workflow expects ticket-level commits.
 
 Continue until all tickets required by the authorized scope are complete. Ticket completion does not replace the gate's review and verify nodes; return the completed scope and evidence to the gate.
+
+
