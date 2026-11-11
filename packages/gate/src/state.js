@@ -37,10 +37,16 @@ export function normalizeState(value) {
   const base = defaultState()
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return base
   const phase = PHASES.includes(value.phase) ? value.phase : 'discuss'
+  const node = value.node === 'review'
+    ? 'code-review-standalone'
+    : value.node === 'code-verify'
+      ? 'verify-standalone'
+      : (typeof value.node === 'string' ? value.node : null)
   return {
     ...base,
     ...value,
     phase,
+    node,
     rounds: { planReview: Number(value?.rounds?.planReview) || 0, codeReview: Number(value?.rounds?.codeReview) || 0 },
     exhausted: {
       plan: value?.exhausted?.plan === true,

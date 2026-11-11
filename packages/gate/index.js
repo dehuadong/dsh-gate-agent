@@ -180,9 +180,10 @@ function readNotesSkill() {
 function phaseMethod(node) {
   if (node === 'plan' || node === 'plan-revise') return '`gate-planning` + `gate-write-agent-notes`'
   if (node === 'plan-review') return '`gate-plan-review`'
+  if (node === 'proposal-review') return '`gate-plan-review`（三轴）'
   if (node === 'implement' || node === 'implement-revise') return '`gate-implement`'
-  if (node === 'code-review' || node === 'review') return '`gate-implementation-review` (one skill, both axes)'
-  if (node === 'verify') return '`gate-verify`'
+  if (node === 'code-review' || node === 'code-review-standalone') return '`gate-implementation-review` (one skill, both axes)'
+  if (node === 'verify' || node === 'verify-standalone') return '`gate-verify`'
   if (node === 'note-lifecycle') return '`gate-write-agent-notes`（lifecycle 工具，不是 worker）'
   return '无'
 }
@@ -510,7 +511,11 @@ function applyCommandEvent(state, name, args) {
     case 'gate-docs':
       return { ...state, phase: 'docs', task: text, node: null, work: 'active', blockReason: null, blockedFrom: null }
     case 'gate-code-review':
-      return { ...state, phase: 'reviewing', task: text, node: 'review', work: 'active', blockReason: null, blockedFrom: null }
+      return { ...state, phase: 'reviewing', task: text, node: 'code-review-standalone', work: 'active', blockReason: null, blockedFrom: null }
+    case 'gate-code-verify':
+      return { ...state, phase: 'reviewing', task: text, node: 'verify-standalone', work: 'active', blockReason: null, blockedFrom: null }
+    case 'gate-propose-review':
+      return { ...state, phase: 'reviewing', task: text, node: 'proposal-review', work: 'active', blockReason: null, blockedFrom: null }
     case 'gate-block':
       return {
         ...state, blockedFrom: { phase: state.phase, node: state.node }, phase: 'blocked',
@@ -802,8 +807,8 @@ function gateDenyReason(ctx, exec, store) {
   return undefined
 }
 
-const WORKER_NODES = new Set(['plan', 'plan-review', 'plan-revise', 'implement', 'code-review', 'implement-revise', 'verify', 'review'])
-const REVIEW_NODES = new Set(['plan-review', 'code-review', 'review'])
+const WORKER_NODES = new Set(['plan', 'plan-review', 'proposal-review', 'plan-revise', 'implement', 'code-review', 'implement-revise', 'verify', 'verify-standalone', 'code-review-standalone'])
+const REVIEW_NODES = new Set(['plan-review', 'proposal-review', 'code-review', 'code-review-standalone'])
 const NOTE_CLASSES = new Set(['feature', 'bug-fix', 'simplification', 'architecture', 'process', 'testing'])
 
 function noteTopic(file) {
@@ -879,7 +884,7 @@ function validateNotePaths(root, value, decision) {
 function reviewAxesError(args) {
   if (!REVIEW_NODES.has(args.node)) return undefined
   const axes = args.reviewAxes
-  const required = args.node === 'plan-review' ? ['standards', 'spec', 'architecture'] : ['standards', 'spec']
+  const required = args.node === 'plan-review' || args.node === 'proposal-review' ? ['standards', 'spec', 'architecture'] : ['standards', 'spec']
   if (axes === null || typeof axes !== 'object' || Array.isArray(axes)) return { code: 'review-axes-required', reason: `review 节点需要 ${required.join('、')} 轴结果。` }
   for (const axis of required) {
     const value = axes[axis]
@@ -1075,10 +1080,34 @@ export function apply(ctx, config = {}) {
       if (state.phase !== 'discuss' && state.phase !== 'complete') return { kind: 'error', text: `当前 phase 是 ${state.phase}` }
       if (state.work === 'blocked' || state.blockReason !== null) return { kind: 'error', text: `当前被 blocked：${state.blockReason ?? 'unknown'}；先 /gate-resume` }
       const scope = brief === '' ? (state.task ?? '当前上下文中的改动') : brief
-      state.phase = 'reviewing'; state.task = scope; state.node = 'review'; state.work = 'active'; state.blockReason = null; state.blockedFrom = null
+      state.phase = 'reviewing'; state.task = scope; state.node = 'code-review-standalone'; state.work = 'active'; state.blockReason = null; state.blockedFrom = null
       store.write(gate.root, invocation.agent, state)
       wakeGateAgent(invocation, `Gate 已进入只读 code review：${scope}。主 agent 先加载技能 gate-implementation-review，再按范围派一个或多个 review worker，覆盖 standards 与 spec 两轴；完成后 gate_record({node:"review", reviewAxes, workerSessionIds})。`, 'gate-code-review')
       return { kind: 'success', text: `进入只读 code review：${scope}\n主代理加载技能 gate-implementation-review，并按范围派 review worker 覆盖两轴。` }
+    })
+    register('gate-code-verify', '开始独立只读验收', async invocation => {
+      const brief = String(invocation.rawInput ?? '').trim()
+      const gate = resolveGate(ctx, invocation.agent)
+      const state = store.read(gate.root, invocation.agent)
+      if (state.phase !== 'discuss' && state.phase !== 'complete') return { kind: 'error', text: `当前 phase 是 ${state.phase}` }
+      if (state.work === 'blocked' || state.blockReason !== null) return { kind: 'error', text: `当前被 blocked：${state.blockReason ?? 'unknown'}；先 /gate-resume` }
+      const scope = brief === '' ? (state.task ?? '当前上下文中的改动') : brief
+      state.phase = 'reviewing'; state.task = scope; state.node = 'verify-standalone'; state.work = 'active'; state.blockReason = null; state.blockedFrom = null
+      store.write(gate.root, invocation.agent, state)
+      wakeGateAgent(invocation, `Gate 已进入独立验收：${scope}。主 agent 加载技能 gate-verify，派 verify worker 执行验收；完成后 gate_record({node:"verify-standalone", verification, workerSessionIds})。`, 'gate-code-verify')
+      return { kind: 'success', text: `进入独立验收：${scope}\n主代理加载技能 gate-verify 并派 verify worker。` }
+    })
+    register('gate-propose-review', '开始独立提案评审', async invocation => {
+      const brief = String(invocation.rawInput ?? '').trim()
+      const gate = resolveGate(ctx, invocation.agent)
+      const state = store.read(gate.root, invocation.agent)
+      if (state.phase !== 'discuss' && state.phase !== 'complete') return { kind: 'error', text: `当前 phase 是 ${state.phase}` }
+      if (state.work === 'blocked' || state.blockReason !== null) return { kind: 'error', text: `当前被 blocked：${state.blockReason ?? 'unknown'}；先 /gate-resume` }
+      const scope = brief === '' ? (state.task ?? '当前提案/Note') : brief
+      state.phase = 'reviewing'; state.task = scope; state.node = 'proposal-review'; state.work = 'active'; state.blockReason = null; state.blockedFrom = null
+      store.write(gate.root, invocation.agent, state)
+      wakeGateAgent(invocation, `Gate 已进入提案评审：${scope}。主 agent 加载技能 gate-plan-review，按规模派一个或多个 review worker 覆盖 Standards、Spec、Architecture 三轴；完成后 gate_record({node:"proposal-review", findings, reviewAxes, workerSessionIds})。`, 'gate-propose-review')
+      return { kind: 'success', text: `进入提案评审：${scope}\n主代理加载技能 gate-plan-review，按三轴完成评审。` }
     })
     register('gate-block', '冻结当前 gate', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
@@ -1133,7 +1162,7 @@ export function apply(ctx, config = {}) {
         ? { kind: 'success', text: check.results.map(item => `${item.name}: ok`).join('\n') }
         : { kind: 'error', text: `notes 校验失败：\n${JSON.stringify(check.results, null, 2)}` }
     }, null)
-    register('gate-note-seal', '用户确认后为 archived notes 生成 manifest', async invocation => {
+    register('gate-note-seal', '只给 archived/ 中已有 Note 补写 manifest.json 的 SHA-256 封印；不归档、不改 Note 内容', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
       const node = resolveNodeBinary()
       if (node === undefined) return { kind: 'error', text: 'notes-runtime-unavailable' }
@@ -1154,7 +1183,7 @@ export function apply(ctx, config = {}) {
       type: 'object',
       additionalProperties: false,
       properties: {
-        node: { type: 'string', enum: ['plan', 'plan-review', 'plan-revise', 'implement', 'code-review', 'implement-revise', 'verify', 'note-lifecycle', 'docs', 'review'] },
+        node: { type: 'string', enum: ['plan', 'plan-review', 'proposal-review', 'plan-revise', 'implement', 'code-review', 'implement-revise', 'verify', 'verify-standalone', 'note-lifecycle', 'docs', 'code-review-standalone'] },
         workerSessionIds: { type: 'array', items: { type: 'string' } },
         reviewAxes: { type: 'object', additionalProperties: true },
         task: { type: 'string' },
@@ -1222,7 +1251,7 @@ export function apply(ctx, config = {}) {
         ? [
             ...args.reviewAxes.standards.findings,
             ...args.reviewAxes.spec.findings,
-            ...(args.node === 'plan-review' ? args.reviewAxes.architecture.findings : []),
+            ...(args.node === 'plan-review' || args.node === 'proposal-review' ? args.reviewAxes.architecture.findings : []),
           ]
         : []
       const findings = [...axesFindings, ...topFindings]
@@ -1236,7 +1265,13 @@ export function apply(ctx, config = {}) {
         store.write(gate.root, exec.agent, state)
         return { ok: true, phase: state.phase, blockReason: state.blockReason, reason: args.discussionReason ?? null, state: normalizeState(state) }
       }
-      if (args.node === 'review') {
+      if (args.node === 'proposal-review') {
+        state.phase = 'discuss'
+        state.node = null
+        state.work = 'active'
+        state.blockReason = null
+        state.blockedFrom = null
+      } else if (args.node === 'code-review-standalone') {
         state.phase = 'discuss'
         state.node = null
         state.work = 'active'
@@ -1306,7 +1341,7 @@ export function apply(ctx, config = {}) {
           state.work = 'blocked'
           state.blockReason = 'code-review-rounds-exhausted'
         } else state.node = 'implement-revise'
-      } else if (args.node === 'verify') {
+      } else if (args.node === 'verify' || args.node === 'verify-standalone') {
         const verification = args.verification
         const commands = Array.isArray(verification?.commands) ? verification.commands.filter(item => typeof item === 'string' && item.trim() !== '') : []
         const evidence = Array.isArray(verification?.evidence) ? verification.evidence.filter(item => typeof item === 'string' && item.trim() !== '') : []
@@ -1340,7 +1375,13 @@ export function apply(ctx, config = {}) {
           executionBound: true,
           verifiedAt: new Date().toISOString(),
         }
-        if (verification.passed !== true) {
+        if (args.node === 'verify-standalone') {
+          state.phase = 'discuss'
+          state.node = null
+          state.work = 'active'
+          state.blockReason = null
+          state.blockedFrom = null
+        } else if (verification.passed !== true) {
           state.node = 'implement-revise'
           state.noteVerified = false
         } else if (state.noteDecision === 'mechanical') {
@@ -1527,6 +1568,12 @@ export function apply(ctx, config = {}) {
 
 
 }
+
+
+
+
+
+
 
 
 

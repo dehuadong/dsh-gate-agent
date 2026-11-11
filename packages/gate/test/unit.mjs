@@ -117,7 +117,7 @@ const execWith = (target, targetAgent, name, args) => {
 const exec = (name, args) => execWith(host, agent, name, args)
 const run = (name, input) => host.commands[name].handler({ agent, rawInput: input, attachments: [] })
 const record = async args => {
-  let withWorkers = ['plan', 'plan-review', 'plan-revise', 'implement', 'code-review', 'implement-revise', 'verify', 'review'].includes(args.node)
+  let withWorkers = ['plan', 'plan-review', 'proposal-review', 'plan-revise', 'implement', 'code-review', 'implement-revise', 'verify', 'verify-standalone', 'code-review-standalone'].includes(args.node)
     && args.workerSessionIds === undefined
     ? { ...args, workerSessionIds: ['worker-test'] }
     : args
@@ -125,10 +125,10 @@ const record = async args => {
     const notePath = addTestNote(workspace)
     withWorkers = { ...withWorkers, noteDecision: 'new', noteSearch: 'test search', notePaths: [{ path: notePath, class: 'feature', lifecycle: 'proposed' }] }
   }
-  const withAxes = ['plan-review', 'code-review', 'review'].includes(args.node) && withWorkers.reviewAxes === undefined
-    ? { ...withWorkers, reviewAxes: { standards: { findings: [] }, spec: { findings: [] }, ...(args.node === 'plan-review' ? { architecture: { findings: [] } } : {}) } }
+  const withAxes = ['plan-review', 'proposal-review', 'code-review', 'code-review-standalone'].includes(args.node) && withWorkers.reviewAxes === undefined
+    ? { ...withWorkers, reviewAxes: { standards: { findings: [] }, spec: { findings: [] }, ...(args.node === 'plan-review' || args.node === 'proposal-review' ? { architecture: { findings: [] } } : {}) } }
     : withWorkers
-  const withToolResults = args.node === 'verify' && withAxes.verification !== undefined && withAxes.verification.toolResults === undefined
+  const withToolResults = (args.node === 'verify' || args.node === 'verify-standalone') && withAxes.verification !== undefined && withAxes.verification.toolResults === undefined
     ? { ...withAxes, verification: { ...withAxes.verification, toolResults: ['tool-result-1'] } }
     : withAxes
   let result = await host.tools.gate_record.execute(withToolResults, { agent, signal: new AbortController().signal })
@@ -264,13 +264,21 @@ check('new plan resets exhaustion', (await run('gate-enter-plan')).kind === 'suc
 await run('gate-return-discuss')
 
 await run('gate-code-review', 'src/x.ts')
-check('standalone code review enters reviewing', stateOf().phase === 'reviewing' && stateOf().node === 'review')
+check('standalone code review enters reviewing', stateOf().phase === 'reviewing' && stateOf().node === 'code-review-standalone')
 check('standalone review denies writes', (await exec('write', { file_path: 'src/x.ts' })).kind === 'deny')
-check('standalone review ends in discuss', (await record({ node: 'review', findings: [] })).phase === 'discuss')
+check('standalone review ends in discuss', (await record({ node: 'code-review-standalone', findings: [] })).phase === 'discuss')
 await run('gate-code-review', '')
 check('code review works without an explicit work item', stateOf().phase === 'reviewing' && typeof stateOf().task === 'string' && stateOf().task.length > 0)
 await run('gate-return-discuss')
 check('return-discuss clears the work item', stateOf().task === null && stateOf().planReady === false)
+
+await run('gate-propose-review', 'note.md')
+check('proposal review enters reviewing with three axes', stateOf().phase === 'reviewing' && stateOf().node === 'proposal-review')
+check('proposal review ends in discuss', (await record({ node: 'proposal-review', findings: [] })).phase === 'discuss')
+
+await run('gate-code-verify', 'src/x.ts')
+check('standalone code verify enters reviewing', stateOf().phase === 'reviewing' && stateOf().node === 'verify-standalone')
+check('standalone code verify ends in discuss', (await record({ node: 'verify-standalone', verification: { commands: ['node test'], evidence: ['artifacts/verify.txt'], passed: true } })).phase === 'discuss')
 
 await run('gate-block', 'manual pause')
 check('block freezes the gate', stateOf().phase === 'blocked' && stateOf().work === 'blocked')
@@ -556,6 +564,9 @@ if (failures > 0) {
   process.exit(1)
 }
 console.log('\nALL CHECKS PASSED')
+
+
+
 
 
 

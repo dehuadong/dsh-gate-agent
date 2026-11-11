@@ -162,7 +162,7 @@ Status: <状态>
 - 计划完成前或提交前，运行 `npm run verify-notes`，检查 tree、format、lifecycle、archived。
 - gate 会话内也可以用 `/gate-note-verify` 做同样的只读检查。
 - Verify PASS 后由 gate 执行 `gate_note_finalize` → `gate_note_verify` 工具 → `gate_record({node:'note-lifecycle'})`；lifecycle 不要用 npm 代替。
-- archived manifest 缺失时只由用户执行 `/gate-note-seal`；不要自动写。
+- `/gate-note-seal` 只给 `archived/` 中已有 Note 补写 `archived/manifest.json` 的 SHA-256 封印；不归档、不改 Note 内容。`verify` 报 manifest/封印缺失时由用户执行，不要自动写。
 
 
 ## References
@@ -177,6 +177,7 @@ Status: <状态>
 - `references/simplification-checklist.md` — 简化机会自检
 - `references/quality-gate.md` — 写后语义自检：Problem / Alternatives / Consequences / Verification 判定 + 汇报形态
 - `references/verification.md` — 校验脚本说明
+
 
 
 
