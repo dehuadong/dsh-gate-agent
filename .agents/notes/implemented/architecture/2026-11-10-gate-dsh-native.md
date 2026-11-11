@@ -100,11 +100,11 @@ B 的正式实施应在 P0 完成后开始；B-1/B-2 的关键决定可以在 P0
 
 ## Command wake
 
-只有启动或继续编排的命令在写入状态后立即调用 `invocation.agent.followup`：`/gate-enter-plan`、`/gate-enter-implement`、`/gate-docs`、`/gate-code-review`，以及回到 active phase 的 `/gate-resume`。`/gate-init` 也 follow-up 一次，返回首次初始化反馈。消息带命令的 `rawInput`、当前 phase 和命令名，source 为 `gate-command`。`/gate-block` 冻结，`/gate-return-discuss` 纯状态回退，`/gate-status` 只读，这三类不 follow-up。没有延迟的第二段，也没有泛化的“继续”提示。首页提交命令由宿主创建 session；命令本身不创建 session。
+只有启动或继续编排的命令在写入状态后立即调用 `invocation.agent.followup`：`/gate-enter-plan`、`/gate-enter-implement`、`/gate-docs`、`/gate-implement-review`，以及回到 active phase 的 `/gate-resume`。`/gate-init` 也 follow-up 一次，返回首次初始化反馈。消息带命令的 `rawInput`、当前 phase 和命令名，source 为 `gate-command`。`/gate-block` 冻结，`/gate-return-discuss` 纯状态回退，`/gate-status` 只读，这三类不 follow-up。没有延迟的第二段，也没有泛化的“继续”提示。首页提交命令由宿主创建 session；命令本身不创建 session。
 
 ## Method loading
 
-主 agent 在**每次派 worker 前**加载当前节点对应的 gate 技能，不依赖之前的加载或记忆（多轮/压缩后尤其如此），把任务和提炼后的方法要求写进 subagent prompt；worker 的 system prompt 不再注入 `Skills` 或 `## Method files`，也不再要求 worker 重新加载 gate 技能。阶段映射：plan/plan-revise → `gate-planning` + `write-agent-notes`；plan-review → `gate-plan-review`；implement/implement-revise → `gate-implement`；code-review/review → `gate-implementation-review`；verify → `gate-verify`；discuss/docs 无技能。这样方法在主 agent 侧每次派发时刷新，worker 的多轮执行复用同一份任务上下文，避免每轮重复加载技能。code review 合并为一个 `gate-implementation-review` 技能，由主 agent 加载后派一个 review worker 同时产出 `standards` 与 `spec` 两轴。
+主 agent 在**每次派 worker 前**加载当前节点对应的 gate 技能，不依赖之前的加载或记忆（多轮/压缩后尤其如此），把任务和提炼后的方法要求写进 subagent prompt；worker 的 system prompt 不再注入 `Skills` 或 `## Method files`，也不再要求 worker 重新加载 gate 技能。阶段映射：plan/plan-revise → `gate-planning` + `write-agent-notes`；plan-review → `gate-plan-review`；implement/implement-revise → `gate-implement`；code-review/review → `gate-code-review`；verify → `gate-verify`；discuss/docs 无技能。这样方法在主 agent 侧每次派发时刷新，worker 的多轮执行复用同一份任务上下文，避免每轮重复加载技能。code review 合并为一个 `gate-code-review` 技能，由主 agent 加载后派一个 review worker 同时产出 `standards` 与 `spec` 两轴。
 
 ## Implementation Review
 
@@ -121,3 +121,4 @@ B 的正式实施应在 P0 完成后开始；B-1/B-2 的关键决定可以在 P0
 - **迁移**：旧 gate 仍 link 在 profile；双 gate 同时运行会互相覆盖状态/拒绝，迁移必须先禁用旧 gate，再安装新包；`remove_bundle` 可能需要重启。
 - **跨会话**：per-session 不满足“项目级冻结”；如果用户需要，必须另做 lease/冲突设计，不能默认声称支持。
 - **测试成本**：真实 Loader 组合测试需要临时项目/profile fixture，可能比 P0 的代码改动更大。
+

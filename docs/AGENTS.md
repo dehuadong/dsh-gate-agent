@@ -16,7 +16,7 @@
 | `.agents/GATES.md` | 阶段授权、准入、返回与审查收敛规则 |
 | `.agents/notes/` | Agent Note：长期技术提案、设计、决定、备选与理由；格式与生命周期遵循 `write-agent-notes` Skill |
 | `.agents/skills/` | 项目级技能实现；技能正文拥有各自方法 |
-| `packages/gate/skills/<name>/SKILL.md` | 插件专项技能：gate-planning、gate-plan-review、gate-implement、gate-implementation-review、gate-verify |
+| `packages/gate/skills/<name>/SKILL.md` | 插件专项技能：gate-planning、gate-plan-review、gate-implement、gate-code-review、gate-verify |
 | `packages/gate/skills/gate-write-agent-notes/` | 插件内置 write-agent-notes 方法、引用与脚本；gate 默认使用，项目不需要安装同名技能 |
 | `packages/gate/src/`、`packages/gate/index.js` | 插件运行时：Gate 状态、分类与写权限 |
 | `packages/gate/cordis.patch.yml` | 插件 bundle 装配 |
@@ -55,4 +55,5 @@
 ## 检查
 
 Agent Note 的目录、格式、正文骨架与本地链接由 `write-agent-notes` Skill 的校验命令检查，入口为管理根的 `npm run verify-notes`。机械检查通过不代替对事实归属与内容真实性的审阅。
+
 

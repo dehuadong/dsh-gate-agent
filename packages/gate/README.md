@@ -8,32 +8,34 @@ Host 插件：按阶段控制 agent 的写入与评审流程，提供 `/gate-*` 
 
 - 安装：用 `plugin_manager` 的 `install_bundle`，target 指向包含本 `package.json` 的目录绝对路径。
 - 用 `plugin_manager` 的 `install_bundle` 安装，target 指向该目录的绝对路径。
-- 插件由“开发者模式”preset 启用；`/gate-init` 初始化项目 notes、AGENTS.md 与 `verify-notes`。
-- planning 使用插件内置的 `gate-write-agent-notes`。`/gate-init` 创建 `.agents/notes/` 的四个 lifecycle 根、AGENTS.md managed block、`.agents/gate/verify-notes.mjs`，并在 `package.json` 确保 `verify-notes` 脚本。
+- 插件由“开发者模式”preset 启用；`/gate-init` 初始化项目 notes、AGENTS.md、`verify-notes` 与 CI。
+- planning 使用插件内置的 `gate-write-agent-notes`。`/gate-init` 创建 `.agents/notes/` 的四个 lifecycle 根、AGENTS.md managed block、`.agents/gate/verify-notes.mjs`、`.agents/gate/ci/`，在 `package.json` 确保 `verify-notes` 脚本，并生成 `.github/workflows/verify-notes.yml`。
 
 ## 命令
 
 | 命令 | 参数 | 作用 |
 |---|---|---|
-| `/gate-init` | 无 | 初始化 notes 根、AGENTS.md、`verify-notes` 脚本，保持 `discuss` |
+| `/gate-init` | 无 | 初始化 notes 根、AGENTS.md、`verify-notes`、`.github/workflows/verify-notes.yml`，保持 `discuss` |
 | `/gate-enter-plan [简单需求]` | 可选 | 进入 `orchestrating/plan`；用户简述随 follow-up 交给 planning |
 | `/gate-enter-implement [简单说明]` | 可选 | 进入 `orchestrating/implement`；复用已通过 planning 的 task，或直接用简述作为当前事项 |
 | `/gate-docs` | 无 | 文档治理，不调用技能 |
-| `/gate-code-review [范围]` | 可选 | 单独只读 code review，只输出 findings；无参数时按上下文确定范围 |
-| `/gate-code-verify [范围]` | 可选 | 单独只读验收，走 gate-verify；无参数时按上下文确定范围 |
+| `/gate-implement-review [范围]` | 可选 | 单独只读 code review，只输出 findings；无参数时按上下文确定范围 |
+| `/gate-code-verify [范围]` | 可选 | 单独只读验收；子代理使用 to-verify，主 agent 不加载 |
 | `/gate-propose-review [提案]` | 可选 | 单独提案评审，走 gate-plan-review 三轴 |
 | `/gate-note-verify` | 无 | 只读检查 notes tree/format/lifecycle/archived |
+| `/gate-note-archive <note> [--superseded-by <new>]` | 必需 Note 路径 | 归档 implemented Note，写 Archived、移动、封印、报告入站链接 |
+| `/gate-note-board [输出路径] [标题]` | 可选 | 生成决策看板 `board.html`，连接本地 notes 目录 |
 | `/gate-note-seal` | 无 | 只给 `archived/` 中已有 Note 补写 `manifest.json` 的 SHA-256 封印；不归档、不改 Note 内容 |
 | `/gate-block [原因]` | 可选 | 手动暂停：保留当前节点；手动 block 后用 `/gate-resume` 回原节点 |
 | `/gate-resume` | 无 | 解冻 block：回到 block 前的节点；轮次耗尽回 discuss |
 | `/gate-return-discuss` | 无 | 用户手动回到 discuss |
 | `/gate-status` | 无 | 只读状态，包括 plan 就绪、轮次与 verify 结果 |
 
-只有**启动或继续编排**的命令在一次 handler 内写状态并立即 `agent.followup`：`/gate-enter-plan`、`/gate-enter-implement`、`/gate-docs`、`/gate-code-review`、`/gate-code-verify`、`/gate-propose-review`，以及回到 active phase 的 `/gate-resume`。`/gate-init` 也 follow-up 一次，用于首次初始化反馈。消息携带 `rawInput`、当前 phase 和命令名，source 是 `gate-command`。`/gate-block`、`/gate-return-discuss` 只改状态，`/gate-status` 只读，都不 follow-up。首页提交命令由宿主创建 session；命令本身不创建 session。
+只有**启动或继续编排**的命令在一次 handler 内写状态并立即 `agent.followup`：`/gate-enter-plan`、`/gate-enter-implement`、`/gate-docs`、`/gate-implement-review`、`/gate-code-verify`、`/gate-propose-review`，以及回到 active phase 的 `/gate-resume`。`/gate-init` 也 follow-up 一次，用于首次初始化反馈。消息携带 `rawInput`、当前 phase 和命令名，source 是 `gate-command`。`/gate-block`、`/gate-return-discuss` 只改状态，`/gate-status` 只读，都不 follow-up。首页提交命令由宿主创建 session；命令本身不创建 session。
 
 进入阶段不等于执行。主代理派发 worker，再用 `gate_record` 推进节点。
 
-Verify PASS 后进入 `note-lifecycle`，完成后回 discuss，不停留在 complete：
+Verify PASS 后进入 `note-lifecycle`，完成后回 discuss，不停留在 complete。回 discuss 前执行一次 `git add -A` + `git commit`（非 git 或没有改动跳过；提交失败不切 discuss）：
 
 1. `gate_note_finalize` 把 proposed Note 移到 `implemented/` 并更新头块；
 2. `gate_note_verify` 跑四条校验并在通过后设置 `noteVerified`；
@@ -51,7 +53,7 @@ planning worker 用 `gate_note_write` 写 `.agents/notes/proposed`；原地同�
 /gate-init
 ```
 
-从 `discuss` 开始，不进入 planning/implement。
+从 `discuss` 开始，不进入 planning/implement。\n\n同时生成 `.agents/gate/ci/` 下的校验脚本副本和 `.github/workflows/verify-notes.yml`；CI 使用这些项目内副本，不依赖插件安装路径。
 
 ### Planning
 
@@ -96,7 +98,7 @@ gate_record({ node: 'verify', verification, workerSessionIds })
 ### 单独 code review
 
 ```text
-/gate-code-review src/
+/gate-implement-review src/
 ```
 
 - 只读；不进入 implement；不修复；不 verify；只输出 findings。
@@ -108,8 +110,9 @@ gate_record({ node: 'verify', verification, workerSessionIds })
 /gate-code-verify
 ```
 
-- 只读；加载 `gate-verify`，按当前上下文或给定范围验收。
-- 结束后 `gate_record({ node: 'verify-standalone', verification, workerSessionIds })`，回到 discuss。
+- 只读；主 agent 不加载 `to-verify`，只派子代理。
+- 子代理按 `to-verify` 执行验收并按 Step 6 汇报；可运行测试/命令作为证据，但不得修改测试、产品代码、需求或设计，也不要自行提交。主 agent 汇总后输出给用户。
+- PASS 后 `gate_record({ node: 'verify-standalone', verification, workerSessionIds })` 会先执行一次 `git add -A` + `git commit`，再回 discuss；非 git 或没有改动跳过。
 - 不进入 note-lifecycle；这是独立验收，不替代 implement 流程的最终 Verify。
 
 ### 提案评审
@@ -123,22 +126,52 @@ gate_record({ node: 'verify', verification, workerSessionIds })
 - 结束后 `gate_record({ node: 'proposal-review', findings, reviewAxes, workerSessionIds })`，回到 discuss。
 - 不自动 plan-revise；findings 由用户决定后续。
 
-### Archived 封印
+### 归档与封印
+
+`/gate-note-verify` 只读检查现有 Note：
+
+```text
+tree / format / lifecycle / archived
+```
+
+`/gate-note-archive` 才是归档：
+
+```text
+/gate-note-archive implemented/<class>/<old>.md --superseded-by implemented/<class>/<new>.md
+```
+
+它会：
+
+- 给旧 Note 插入 `Archived: YYYY-MM-DD`；
+- 移到 `archived/<class>/`；
+- 写入 `archived/manifest.json` 的 SHA-256 封印；
+- 报告仍指向旧 Note 的入站链接；
+- `--superseded-by` 只在**新 Note** 里补互链，不改归档正文。
+
+什么时候归档，按原始 `write-agent-notes` 规则：
+
+- 旧方案被新方案**完全取代**，但旧篇仍有独立参考价值（否定性保证、所有权边界、重新引入条件）→ 吸收旧篇独有理由后归档；
+- 一次性设计、已废弃平台的窄适配、已闭环的简单修补 → 可归档；
+- 旧篇被完全吸收、没有独立价值 → 删除，不归档；
+- 部分取代 → 两篇都保留并互链，不归档。
+
+`/gate-note-seal` 不是归档入口：
 
 ```text
 /gate-note-seal
 ```
 
-只处理 `.agents/notes/archived/` 下**已经存在**的 Note：
+只给 `archived/` 中**已有但缺 manifest/封印**的 Note 补 SHA-256；通常在 verify 报 `manifest.json missing` 或历史导入时执行一次。正常用 `/gate-note-archive` 时，归档脚本已经写入封印，不需要再 seal。
 
-- 校验 archived Note 头部布局（`Archived: YYYY-MM-DD` 等）；
-- 给 `archived/manifest.json` 补上缺失的 `sha256:` 封印；
-- 已封印内容 hash 不一致、manifest 条目无文件时拒绝写入；
-- 不移动 Note、不修改正文，不执行归档。
+### 决策看板
 
-执行后，archived Note 被修改或删除会被 `verify-notes` / `/gate-note-verify` 报错。因此这是“冻结历史”的动作，由用户手动确认；通常只在 verify 报 `manifest.json missing` 或缺封印时执行一次。
+```text
+/gate-note-board [输出路径] [标题]
+```
 
-归档动作本身是给 Note 加 `Archived:` 并移入 `archived/`，见内置技能 `references/archiving.md`。
+默认生成 `board.html`（约 69KB 轻量版）。用浏览器打开后点击“连接本地目录”选择 `.agents/notes`，之后新增/修改 Note 会自动热刷新。
+
+不指定标题时使用项目目录名加“决策看板”。
 
 ### 文档治理
 
@@ -249,6 +282,14 @@ gate_record({
 - verify 的 `toolResults` 会用 `sessionQuery.readSession` 在 worker session log 中绑定到真实 `tool/result` callId；`commands`/`evidence` 仍是主代理转述，不能当成完整独立执行证明。
 - `ctx.tools.restrict` 只掩全局工具；scoped 写工具仍可能出现在工具面，硬拒绝由 `ctx.tools.guard` 保证。
 - 旧 gate 迁移仍属后续 B 工作项；session projection、guard/restrict/sandbox、worker tree 证据与 review axes 已在 T1/T2/T3 实现。
+
+
+
+
+
+
+
+
 
 
 

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { classifyPath, shellAccess } from './src/classify.js'
@@ -11,6 +11,14 @@ export const inject = ['tools']
 const SKILLS = fileURLToPath(new URL('./skills', import.meta.url))
 const NOTES_SKILL_DIR = path.join(SKILLS, 'gate-write-agent-notes')
 const NOTES_LAUNCHER_TEMPLATE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'launchers', 'verify-notes.mjs')
+const NOTES_CI_TEMPLATE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'launchers', 'verify-notes.yml')
+const NOTES_CI_SCRIPTS = [
+  'agent-note-tree.ts',
+  'verify-agent-note-tree.ts',
+  'verify-agent-note-format.ts',
+  'verify-agent-note-lifecycle.ts',
+  'verify-archived-agent-notes.ts',
+]
 const NOTES_BLOCK_START = '<!-- gate-notes:start -->'
 const NOTES_BLOCK_END = '<!-- gate-notes:end -->'
 const NOTES_AGENTS_TEXT = `${NOTES_BLOCK_START}
@@ -21,7 +29,7 @@ const NOTES_AGENTS_TEXT = `${NOTES_BLOCK_START}
 3. 被放弃的方案先写最强理由再否决。
 4. 提交前运行 \`npm run verify-notes\` 检查；gate 会话内也可用 \`/gate-note-verify\`。gate 的 lifecycle 由 \`gate_note_finalize\` → \`gate_note_verify\` → \`gate_record({node:'note-lifecycle'})\` 完成。
 ${NOTES_BLOCK_END}`
-const SKILL_NAMES = ['gate-planning', 'gate-plan-review', 'gate-implement', 'gate-implementation-review', 'gate-verify', 'gate-write-agent-notes']
+const SKILL_NAMES = ['gate-planning', 'gate-plan-review', 'gate-implement', 'gate-code-review', 'gate-verify', 'gate-write-agent-notes', 'to-verify']
 const DEFAULT_REVIEW_LIMIT = 5
 
 const SCHEMASTERY = Symbol.for('schemastery')
@@ -81,7 +89,7 @@ export const PLAN_ORCHESTRATION = `## /gate-enter-plan 编排
 
 ## Step 1 — Planning
 主 agent 加载技能 gate-planning 和 gate-write-agent-notes。
-先按 write-agent-notes §3 检索历史，再按 §4 判定归属与 class；用 gate_note_write 写 Note，路径与 class 必须一致。
+先按 write-agent-notes §3 检索历史，再按 §4 判定归属与 class；用 gate_note_write 写 Note，路径与 class 必须一致。发现旧 implemented Note 被新决定完全取代时，记下归档候选；新 Note 尚未落地前不要归档。
 把工作项、约束和提炼后的规划方法写进 subagent prompt；planning worker 不加载 gate 技能。
 完成后调 gate_record({node:'plan', task, notePaths, noteDecision, noteSearch, workerSessionIds})。
 notePaths 是 [{path,class,lifecycle}] 数组；mechanical:<说明> 用 noteDecision:'mechanical' 且 notePaths 为空。
@@ -106,7 +114,7 @@ worker 不加载 gate 技能。
 完成后调 gate_record({node:'implement', workerSessionIds})。
 
 ## Step 2 — Implementation Review
-主 agent 加载技能 gate-implementation-review；按改动规模自行决定派一个或多个只读 review worker，覆盖 Standards 与 Spec 两轴。
+主 agent 加载技能 gate-code-review；按改动规模自行决定派一个或多个只读 review worker，覆盖 Standards 与 Spec 两轴。
 完成后调 gate_record({node:'code-review', findings, reviewAxes, workerSessionIds})。
 审查要求满足后继续 Step 3，无需再次授权。
 实现中发现范围外问题、合同变化或需要重新讨论时，worker 停止并返回 receipt；主 agent 向用户说明，使用 gate_record 的 requiresDiscussion 或提示用户执行 /gate-return-discuss。不要停在 implement 里继续扩大范围。
@@ -120,7 +128,7 @@ worker 不加载 gate 技能。
 ## Step 4 — Note lifecycle
 Verify PASS 后进入 note-lifecycle，不得直接 complete。
 主 agent 调 gate_note_finalize，再调 gate_note_verify；通过后 gate_record({node:'note-lifecycle'})。
-mechanical 工作项自动跳过；跨会话 journal 只报告不恢复；archived manifest 只由用户执行 /gate-note-seal。`
+mechanical 工作项自动跳过；跨会话 journal 只报告不恢复；archived manifest 只由用户执行 /gate-note-seal。回 discuss 前 gate 会执行一次 git add -A + git commit；非 git 或无改动跳过。`
 
 export const DOCS_ORCHESTRATION = `## /gate-docs 编排
 做文档治理，不调用技能；范围由模型按项目实际文档需要判断。
@@ -130,7 +138,7 @@ export const NOTE_LIFECYCLE_ORCHESTRATION = `## Note lifecycle
 Verify 已 PASS；当前不派 worker，也不写业务代码。
 按顺序执行：gate_note_finalize → gate_note_verify → gate_record({node:'note-lifecycle'})。
 finalize/verify 失败留在本节点修复；archived manifest 缺失时提示用户执行 /gate-note-seal。
-只有 noteVerified=true 才能 gate_record 完成；mechanical 工作项可跳过 finalize。`
+只有 noteVerified=true 才能 gate_record 完成；mechanical 工作项可跳过 finalize。完成后检查本次新 Note 是否完全取代了某篇 implemented Note：有独立参考价值就在最终汇报中给出归档候选和目标命令，没有独立价值则建议删除；不要自动归档。`
 
 function readSkill(name) {
   const file = path.join(SKILLS, name, 'SKILL.md')
@@ -182,10 +190,29 @@ function phaseMethod(node) {
   if (node === 'plan-review') return '`gate-plan-review`'
   if (node === 'proposal-review') return '`gate-plan-review`（三轴）'
   if (node === 'implement' || node === 'implement-revise') return '`gate-implement`'
-  if (node === 'code-review' || node === 'code-review-standalone') return '`gate-implementation-review` (one skill, both axes)'
-  if (node === 'verify' || node === 'verify-standalone') return '`gate-verify`'
+  if (node === 'code-review' || node === 'code-review-standalone') return '`gate-code-review` (one skill, both axes)'
+  if (node === 'verify') return '`gate-verify`'
+  if (node === 'verify-standalone') return '无'
   if (node === 'note-lifecycle') return '`gate-write-agent-notes`（lifecycle 工具，不是 worker）'
   return '无'
+}
+
+function commitGateChanges(root, state) {
+  const git = (args, options = {}) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options })
+  try {
+    git(['rev-parse', '--is-inside-work-tree'])
+  } catch {
+    return { ok: true, skipped: 'not-git' }
+  }
+  try {
+    if (git(['status', '--porcelain']).trim() === '') return { ok: true, skipped: 'clean' }
+    git(['add', '-A'])
+    const message = `gate: ${state.task ?? 'complete'}`.replace(/\s+/gu, ' ').slice(0, 200)
+    git(['commit', '-m', message])
+    return { ok: true, committed: true }
+  } catch (error) {
+    return { ok: false, reason: String(error?.stderr ?? error?.message ?? error).trim() }
+  }
 }
 
 function resolveNodeBinary() {
@@ -390,7 +417,9 @@ function workerProtocol(node) {
   return [
     '## Gate worker',
     '你是 gate 为该节点派发的 worker。只执行该节点；不要调用 gate_record，不要推进 gate。',
-    '主代理已经加载所需 gate 技能，并把具体任务与相关方法要求交给你。不要自己加载 gate 技能。',
+    node === 'verify-standalone'
+      ? '主代理不加载 to-verify；你使用 to-verify 完成验收，并按该技能 Step 6 汇报。不修改产品代码、测试、需求或设计；可以运行测试/命令作为证据，但不得修改、放宽或重写测试；不要自行提交。'
+      : '主代理已经加载所需 gate 技能，并把具体任务与相关方法要求交给你。不要自己加载 gate 技能。',
     node === 'plan' || node === 'plan-revise'
       ? '用 gate_note_write 在 .agents/notes/proposed 下创建或更新 proposed Agent Note；原地同步既有 implemented Note 时路径写 implemented/<class>/...；planning 中通用 write/edit/shell 被限制。'
       : '',
@@ -401,9 +430,7 @@ function provisionProjectScripts(root) {
   const dir = path.join(root, '.agents', 'gate')
   const launcher = path.join(dir, 'verify-notes.mjs')
   mkdirSync(dir, { recursive: true })
-  const template = readFileSync(NOTES_LAUNCHER_TEMPLATE, 'utf8')
-  const content = template.replace('__GATE_NOTES_SKILL_DIR__', JSON.stringify(NOTES_SKILL_DIR).slice(1, -1))
-  writeFileSync(launcher, content)
+  copyFileSync(NOTES_LAUNCHER_TEMPLATE, launcher)
   const packagePath = path.join(root, 'package.json')
   let pkg = { private: true }
   if (existsSync(packagePath)) {
@@ -424,6 +451,19 @@ function provisionProjectScripts(root) {
 }
 
 
+
+function provisionCi(root) {
+  const ciDir = path.join(root, '.agents', 'gate', 'ci')
+  mkdirSync(ciDir, { recursive: true })
+  for (const name of NOTES_CI_SCRIPTS) {
+    copyFileSync(path.join(NOTES_SKILL_DIR, 'scripts', name), path.join(ciDir, name))
+  }
+  const workflow = path.join(root, '.github', 'workflows', 'verify-notes.yml')
+  mkdirSync(path.dirname(workflow), { recursive: true })
+  const existing = existsSync(workflow)
+  if (!existing) copyFileSync(NOTES_CI_TEMPLATE, workflow)
+  return { workflow: path.relative(root, workflow).replaceAll('\\', '/'), scripts: path.relative(root, ciDir).replaceAll('\\', '/'), changed: !existing }
+}
 
 function workspaceBoundary(ctx, agent) {
   try {
@@ -511,7 +551,7 @@ function applyCommandEvent(state, name, args) {
       }
     case 'gate-docs':
       return { ...state, phase: 'docs', task: text, node: null, work: 'active', blockReason: null, blockedFrom: null }
-    case 'gate-code-review':
+    case 'gate-implement-review':
       return { ...state, phase: 'reviewing', task: text, node: 'code-review-standalone', work: 'active', blockReason: null, blockedFrom: null }
     case 'gate-code-verify':
       return { ...state, phase: 'reviewing', task: text, node: 'verify-standalone', work: 'active', blockReason: null, blockedFrom: null }
@@ -1028,27 +1068,29 @@ export function apply(ctx, config = {}) {
       ...(input === null ? {} : { input }),
       handler,
     })
-    register('gate-init', '初始化项目的 notes、AGENTS.md 与 verify-notes', async invocation => {
+    register('gate-init', '初始化 notes、AGENTS.md、verify-notes 与 GitHub Actions CI', async invocation => {
       const workspace = sessionWorkingDirectory(ctx, invocation.agent)
       if (workspace === undefined) return { kind: 'error', text: '无法确定当前会话工作区' }
       const root = findProjectRoot(workspace) ?? workspace
       let provisioned
       let projectScripts
+      let projectCi
       try {
         provisioned = provisionNotes(root)
+        projectCi = provisionCi(root)
         projectScripts = provisionProjectScripts(root)
       } catch (error) {
         return { kind: 'error', text: `notes 初始化失败：${error instanceof Error ? error.message : String(error)}` }
       }
-      wakeGateAgent(invocation, `Gate 已初始化：${root}（phase=discuss），notes 已初始化为 ${provisioned.notes}，AGENTS.md 已更新，verify-notes 已配置为 ${projectScripts.command}。`, 'gate-init')
-      return { kind: 'success', text: `Gate 已初始化：${root}（phase=discuss）\nnotes：${provisioned.notes}\nAGENTS：${provisioned.agents}\nverify-notes：${projectScripts.command}` }
+      wakeGateAgent(invocation, `Gate 已初始化：${root}（phase=discuss），notes 已初始化为 ${provisioned.notes}，AGENTS.md 已更新，verify-notes 已配置为 ${projectScripts.command}，CI 已配置为 ${projectCi.workflow}。`, 'gate-init')
+      return { kind: 'success', text: `Gate 已初始化：${root}（phase=discuss）\nnotes：${provisioned.notes}\nAGENTS：${provisioned.agents}\nverify-notes：${projectScripts.command}\nCI：${projectCi.workflow}` }
     }, null)
     register('gate-enter-plan', '按用户简述进入 planning', async invocation => {
       const result = enterPhase(ctx, invocation.agent, 'plan', reviewLimit, store)
       if (result.kind === 'error') return result
       const brief = String(invocation.rawInput ?? '').trim()
-      wakeGateAgent(invocation, `Gate 已进入 plan。用户规划输入：${brief === '' ? '（未提供额外输入）' : brief}。按 Gate 编排 Step 1：先加载 gate-planning 和 gate-write-agent-notes，按 §3 检索历史、§4 判定 noteDecision/notePaths/noteSearch；再派 planning worker，规划必须覆盖该输入。完成后调 gate_record({node:"plan", task, notePaths, noteDecision, noteSearch, workerSessionIds})；缺少 note 字段会被拒绝。`, 'gate-enter-plan')
-      return { kind: 'success', text: '进入 planning：工作项将在规划中确定。\n主代理加载 gate-planning + gate-write-agent-notes 后派 worker；gate_record plan 需要 noteDecision/notePaths/noteSearch。' }
+      wakeGateAgent(invocation, `Gate 已进入 plan。用户规划输入：${brief === '' ? '（未提供额外输入）' : brief}。`, 'gate-enter-plan')
+      return { kind: 'success', text: '进入 planning。' }
     }, { hint: '[简单需求]' })
     register('gate-enter-implement', '从当前规划或用户简述直接进入 implementation', async invocation => {
       const brief = String(invocation.rawInput ?? '').trim()
@@ -1070,8 +1112,8 @@ export function apply(ctx, config = {}) {
       const result = enterPhase(ctx, invocation.agent, 'implement', reviewLimit, store)
       if (result.kind === 'error') return result
       const constraints = direct ? '（本句即工作项简述）' : (brief === '' ? '（无额外约束）' : brief)
-      wakeGateAgent(invocation, `Gate 已进入 implement：${result.state.task ?? ''}${direct ? '（直接实施，未走 planning）' : ''}。用户说明：${constraints}。按 Gate 编排 Step 1 加载 gate-implement，派 implement worker；Step 2 加载 gate-implementation-review 做两轴 Implementation Review；Step 3 加载 gate-verify 做最终验收；Verify PASS 后 Step 4 进入 note-lifecycle，执行 gate_note_finalize → gate_note_verify → gate_record({node:"note-lifecycle"})。`, 'gate-enter-implement')
-      return { kind: 'success', text: `进入 implement：${result.state.task}${direct ? '（直接实施）' : ''}\n主代理按 Step 1-4 执行：implement → code-review → verify → note-lifecycle。` }
+      wakeGateAgent(invocation, `Gate 已进入 implement：${result.state.task ?? ''}${direct ? '（直接实施，未走 planning）' : ''}。用户说明：${constraints}。`, 'gate-enter-implement')
+      return { kind: 'success', text: `进入 implement：${result.state.task}${direct ? '（直接实施）' : ''}` }
     }, { hint: '[简单说明]' })
     register('gate-docs', '开始文档治理', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
@@ -1083,7 +1125,7 @@ export function apply(ctx, config = {}) {
       wakeGateAgent(invocation, 'Gate 已进入 docs：文档治理，不调用技能。完成后 gate_record({node:"docs"})。', 'gate-docs')
       return { kind: 'success', text: '进入 docs：文档治理' }
     }, null)
-    register('gate-code-review', '开始独立只读 code review', async invocation => {
+    register('gate-implement-review', '开始独立只读 code review', async invocation => {
       const brief = String(invocation.rawInput ?? '').trim()
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
@@ -1092,8 +1134,8 @@ export function apply(ctx, config = {}) {
       const scope = brief === '' ? (state.task ?? '当前上下文中的改动') : brief
       state.phase = 'reviewing'; state.task = scope; state.node = 'code-review-standalone'; state.work = 'active'; state.blockReason = null; state.blockedFrom = null
       store.write(gate.root, invocation.agent, state)
-      wakeGateAgent(invocation, `Gate 已进入只读 code review：${scope}。主 agent 先加载技能 gate-implementation-review，再按范围派一个或多个 review worker，覆盖 standards 与 spec 两轴；完成后 gate_record({node:"review", reviewAxes, workerSessionIds})。`, 'gate-code-review')
-      return { kind: 'success', text: `进入只读 code review：${scope}\n主代理加载技能 gate-implementation-review，并按范围派 review worker 覆盖两轴。` }
+      wakeGateAgent(invocation, `Gate 已进入只读 code review：${scope}。主 agent 先加载技能 gate-code-review，再按范围派一个或多个 review worker，覆盖 standards 与 spec 两轴；完成后 gate_record({node:"review", reviewAxes, workerSessionIds})。`, 'gate-implement-review')
+      return { kind: 'success', text: `进入只读 code review：${scope}\n主代理加载技能 gate-code-review，并按范围派 review worker 覆盖两轴。` }
     })
     register('gate-code-verify', '开始独立只读验收', async invocation => {
       const brief = String(invocation.rawInput ?? '').trim()
@@ -1104,8 +1146,8 @@ export function apply(ctx, config = {}) {
       const scope = brief === '' ? (state.task ?? '当前上下文中的改动') : brief
       state.phase = 'reviewing'; state.task = scope; state.node = 'verify-standalone'; state.work = 'active'; state.blockReason = null; state.blockedFrom = null
       store.write(gate.root, invocation.agent, state)
-      wakeGateAgent(invocation, `Gate 已进入独立验收：${scope}。主 agent 加载技能 gate-verify，派 verify worker 执行验收；完成后 gate_record({node:"verify-standalone", verification, workerSessionIds})。`, 'gate-code-verify')
-      return { kind: 'success', text: `进入独立验收：${scope}\n主代理加载技能 gate-verify 并派 verify worker。` }
+      wakeGateAgent(invocation, `Gate 已进入独立验收：${scope}。主 agent 不加载 to-verify；派一个子代理执行验收，任务说明中给出具体验收事项、合同和证据要求，并要求子代理使用 to-verify、按该技能 Step 6 汇报。主 agent 只汇总结果给用户。完成后 gate_record({node:"verify-standalone", verification, workerSessionIds})。`, 'gate-code-verify')
+      return { kind: 'success', text: `进入独立验收：${scope}\n主代理派子代理，子代理使用 to-verify 并按 Step 6 汇报。` }
     })
     register('gate-propose-review', '开始独立提案评审', async invocation => {
       const brief = String(invocation.rawInput ?? '').trim()
@@ -1174,6 +1216,37 @@ export function apply(ctx, config = {}) {
         ? { kind: 'success', text: check.results.map(item => `${item.name}: ok`).join('\n') }
         : { kind: 'error', text: `notes 校验失败：\n${JSON.stringify(check.results, null, 2)}` }
     }, null)
+    register('gate-note-archive', '将 implemented Note 归档到 archived/：加 Archived、移动、封印并报告入站链接', async invocation => {
+      const gate = resolveGate(ctx, invocation.agent)
+      const raw = String(invocation.rawInput ?? '').trim()
+      const args = raw === '' ? [] : raw.split(/\s+/u)
+      if (args.length === 0) return { kind: 'error', text: '用法：/gate-note-archive implemented/<class>/<note>.md [--superseded-by implemented/<class>/<new>.md]' }
+      const node = resolveNodeBinary()
+      if (node === undefined) return { kind: 'error', text: 'notes-runtime-unavailable' }
+      try {
+        const script = path.join(NOTES_SKILL_DIR, 'scripts', 'archive-agent-note.ts')
+        const output = execFileSync(node, [script, '--root', path.join(gate.root, '.agents', 'notes'), ...args], { cwd: gate.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+        return { kind: 'success', text: String(output).trim() || 'Note 已归档' }
+      } catch (error) {
+        return { kind: 'error', text: String(error?.stderr ?? error?.message ?? error).trim() }
+      }
+    }, { hint: '<implemented-note> [--superseded-by <new-note>]' })
+    register('gate-note-board', '生成决策看板 board.html（轻量模式，连接本地 notes 目录）', async invocation => {
+      const gate = resolveGate(ctx, invocation.agent)
+      const raw = String(invocation.rawInput ?? '').trim()
+      const args = raw === '' ? [] : raw.split(/\s+/u)
+      const target = args[0] ?? 'board.html'
+      const title = args[1] ?? `${path.basename(gate.root)} 决策看板`
+      const node = resolveNodeBinary()
+      if (node === undefined) return { kind: 'error', text: 'notes-runtime-unavailable' }
+      try {
+        const script = path.join(NOTES_SKILL_DIR, 'scripts', 'build-board.ts')
+        const output = execFileSync(node, [script, '--init', target, title], { cwd: gate.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+        return { kind: 'success', text: String(output).trim() || `决策看板已生成：${target}` }
+      } catch (error) {
+        return { kind: 'error', text: String(error?.stderr ?? error?.message ?? error).trim() }
+      }
+    }, { hint: '[输出路径] [标题]' })
     register('gate-note-seal', '只给 archived/ 中已有 Note 补写 manifest.json 的 SHA-256 封印；不归档、不改 Note 内容', async invocation => {
       const gate = resolveGate(ctx, invocation.agent)
       const node = resolveNodeBinary()
@@ -1398,6 +1471,10 @@ export function apply(ctx, config = {}) {
           verifiedAt: new Date().toISOString(),
         }
         if (args.node === 'verify-standalone') {
+          if (verification.passed === true) {
+            const commit = commitGateChanges(gate.root, state)
+            if (commit.ok !== true) return { ok: false, code: 'commit-failed', reason: commit.reason }
+          }
           state.phase = 'discuss'
           state.node = null
           state.work = 'active'
@@ -1407,6 +1484,10 @@ export function apply(ctx, config = {}) {
           state.node = 'implement-revise'
           state.noteVerified = false
         } else if (state.noteDecision === 'mechanical') {
+          state.noteVerified = true
+          state.noteFinalized = true
+          const commit = commitGateChanges(gate.root, state)
+          if (commit.ok !== true) return { ok: false, code: 'commit-failed', reason: commit.reason }
           state.phase = 'discuss'
           state.node = null
           state.work = 'active'
@@ -1414,8 +1495,6 @@ export function apply(ctx, config = {}) {
           state.blockedFrom = null
           state.task = null
           state.planReady = false
-          state.noteVerified = true
-          state.noteFinalized = true
         } else {
           state.phase = 'orchestrating'
           state.node = 'note-lifecycle'
@@ -1428,6 +1507,8 @@ export function apply(ctx, config = {}) {
         if (state.noteVerified !== true) {
           return { ok: false, code: 'note-lifecycle-incomplete', reason: 'note-lifecycle 需要先 gate_note_finalize + gate_note_verify。' }
         }
+        const commit = commitGateChanges(gate.root, state)
+        if (commit.ok !== true) return { ok: false, code: 'commit-failed', reason: commit.reason }
         state.phase = 'discuss'
         state.node = null
         state.work = 'active'
@@ -1594,6 +1675,14 @@ export function apply(ctx, config = {}) {
 
 
 }
+
+
+
+
+
+
+
+
 
 
 

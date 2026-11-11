@@ -143,6 +143,8 @@ const stateOf = (target = workspace, targetAgent = agent) => loadState(target, t
 
 check('docs command registered', typeof host.commands['gate-docs']?.handler === 'function')
 check('status command registered', typeof host.commands['gate-status']?.handler === 'function')
+check('note archive command registered', typeof host.commands['gate-note-archive']?.handler === 'function')
+check('note board command registered', typeof host.commands['gate-note-board']?.handler === 'function')
 check('discuss denies code', (await exec('write', { file_path: 'src/x.ts' })).kind === 'deny')
 check('discuss denies docs', (await exec('write', { file_path: 'docs/x.md' })).kind === 'deny')
 await run('gate-docs', 'docs/')
@@ -270,11 +272,11 @@ check('exhausted plan cannot enter implement', (await run('gate-enter-implement'
 check('new plan resets exhaustion', (await run('gate-enter-plan')).kind === 'success' && stateOf().exhausted.plan === false)
 await run('gate-return-discuss')
 
-await run('gate-code-review', 'src/x.ts')
+await run('gate-implement-review', 'src/x.ts')
 check('standalone code review enters reviewing', stateOf().phase === 'reviewing' && stateOf().node === 'code-review-standalone')
 check('standalone review denies writes', (await exec('write', { file_path: 'src/x.ts' })).kind === 'deny')
 check('standalone review ends in discuss', (await record({ node: 'code-review-standalone', findings: [] })).phase === 'discuss')
-await run('gate-code-review', '')
+await run('gate-implement-review', '')
 check('code review works without an explicit work item', stateOf().phase === 'reviewing' && typeof stateOf().task === 'string' && stateOf().task.length > 0)
 await run('gate-return-discuss')
 check('return-discuss clears the work item', stateOf().task === null && stateOf().planReady === false)
@@ -322,9 +324,9 @@ const wakeAgent = { id: 'wake-session', session: { header: {} }, followup: messa
 const wakeHost = fakeHost(makeWorkspace())
 await wakeHost.commands['gate-enter-plan'].handler({ agent: wakeAgent, rawInput: '', attachments: [] })
 await new Promise(resolve => setTimeout(resolve, 5))
-check('gate-enter-plan wakes the agent for orchestration', wakeMessages.length === 1 && wakeMessages[0].content?.[0]?.text?.includes('gate-planning') && wakeMessages[0].source?.kind === 'gate-command' && wakeMessages[0].source?.command === 'gate-enter-plan')
+check('gate-enter-plan wakes the agent for orchestration', wakeMessages.length === 1 && wakeMessages[0].content?.[0]?.text?.includes('Gate 已进入 plan') && wakeMessages[0].source?.kind === 'gate-command' && wakeMessages[0].source?.command === 'gate-enter-plan')
 const planWakeText = wakeMessages[0].content?.[0]?.text ?? ''
-check('plan wake names notes skill and required note fields', planWakeText.includes('gate-write-agent-notes') && planWakeText.includes('noteDecision') && planWakeText.includes('notePaths') && planWakeText.includes('noteSearch'))
+check('plan wake carries the brief', planWakeText.includes('用户规划输入'))
 
 const quietMessages = []
 const quietAgent = { id: 'quiet-session', session: { header: {} }, followup: message => quietMessages.push(message) }
@@ -347,7 +349,7 @@ const implementWakeHost = fakeHost(implementWakeWorkspace)
 saveState(implementWakeWorkspace, implementWakeAgent, { ...defaultState(), phase: 'discuss', task: 'work', planReady: true, noteDecision: 'new', notePaths: [{ path: addTestNote(implementWakeWorkspace), class: 'feature', lifecycle: 'proposed' }] })
 await implementWakeHost.commands['gate-enter-implement'].handler({ agent: implementWakeAgent, rawInput: '', attachments: [] })
 const implementWakeText = implementWakeMessages[0]?.content?.[0]?.text ?? ''
-check('implement wake names review, verify and lifecycle steps', implementWakeText.includes('gate-implementation-review') && implementWakeText.includes('gate-verify') && implementWakeText.includes('note-lifecycle'))
+check('implement wake carries the task', implementWakeText.includes('Gate 已进入 implement'))
 
 const restrictionCalls = []
 let restrictionDisposals = 0
@@ -536,6 +538,12 @@ const lifecycleInit = await lifecycleHost.commands['gate-init'].handler({ agent:
 check('gate-init provisions notes roots and AGENTS', lifecycleInit.kind === 'success' && existsSync(path.join(lifecycleWorkspace, 'AGENTS.md')) && existsSync(path.join(lifecycleWorkspace, '.agents', 'notes', 'rejected', '.gitkeep')))
 const initPackage = JSON.parse(readFileSync(path.join(lifecycleWorkspace, 'package.json'), 'utf8'))
 check('gate-init configures verify-notes npm script', initPackage.scripts?.['verify-notes'] === 'node .agents/gate/verify-notes.mjs' && existsSync(path.join(lifecycleWorkspace, '.agents', 'gate', 'verify-notes.mjs')))
+const launcherText = readFileSync(path.join(lifecycleWorkspace, '.agents', 'gate', 'verify-notes.mjs'), 'utf8')
+check('verify-notes launcher uses project-local scripts', launcherText.includes(".agents', 'gate', 'ci") && !launcherText.includes(lifecycleWorkspace))
+const ciWorkflow = path.join(lifecycleWorkspace, '.github', 'workflows', 'verify-notes.yml')
+check('gate-init configures note verification CI', existsSync(ciWorkflow) && readFileSync(ciWorkflow, 'utf8').includes('.agents/gate/ci/verify-agent-note-tree.ts') && existsSync(path.join(lifecycleWorkspace, '.agents', 'gate', 'ci', 'agent-note-tree.ts')))
+const board = await lifecycleHost.commands['gate-note-board'].handler({ agent: lifecycleAgent, rawInput: 'board.html', attachments: [] })
+check('gate-note-board generates a board', board.kind === 'success' && existsSync(path.join(lifecycleWorkspace, 'board.html')))
 check('gate-init does not copy project skill', !existsSync(path.join(lifecycleWorkspace, '.agents', 'skills', 'write-agent-notes')))
 await lifecycleHost.commands['gate-init'].handler({ agent: lifecycleAgent, rawInput: '', attachments: [] })
 const agentBlock = readFileSync(path.join(lifecycleWorkspace, 'AGENTS.md'), 'utf8')
@@ -581,6 +589,12 @@ if (failures > 0) {
   process.exit(1)
 }
 console.log('\nALL CHECKS PASSED')
+
+
+
+
+
+
 
 
 

@@ -1,6 +1,7 @@
 ---
 name: gate-plan-review
 description: 由主 agent 读取并提炼后派发的只读 Plan Review 方法；保留 Standards/Spec/Architecture 三轴，只报告发现。
+user-invocable: false
 ---
 
 ## 主 agent 使用

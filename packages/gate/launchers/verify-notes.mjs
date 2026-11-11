@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 
-const skillDir = '__GATE_NOTES_SKILL_DIR__'
+const scriptsDir = join(process.cwd(), '.agents', 'gate', 'ci')
 const notesRoot = join(process.cwd(), '.agents', 'notes')
 const scripts = [
   'verify-agent-note-tree.ts',
@@ -13,7 +13,7 @@ const scripts = [
 for (const name of scripts) {
   const result = spawnSync(
     process.execPath,
-    [join(skillDir, 'scripts', name), '--root', notesRoot],
+    [join(scriptsDir, name), '--root', notesRoot],
     { stdio: 'inherit' },
   )
   if (result.status !== 0) process.exit(result.status ?? 1)

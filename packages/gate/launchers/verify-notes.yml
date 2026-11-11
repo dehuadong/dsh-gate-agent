@@ -1,0 +1,34 @@
+# 由 gate-init 生成；校验脚本在 .agents/gate/ci/，不依赖插件安装路径。
+name: Verify Agent Notes
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Verify note tree, format, lifecycle, and archive seals
+        env:
+          AGENT_NOTE_ARCHIVE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          npx --yes tsx .agents/gate/ci/verify-agent-note-tree.ts --root .agents/notes
+          npx --yes tsx .agents/gate/ci/verify-agent-note-format.ts --root .agents/notes
+          npx --yes tsx .agents/gate/ci/verify-agent-note-lifecycle.ts --root .agents/notes
+          npx --yes tsx .agents/gate/ci/verify-archived-agent-notes.ts --root .agents/notes

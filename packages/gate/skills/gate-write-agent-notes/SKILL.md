@@ -1,6 +1,7 @@
 ---
 name: gate-write-agent-notes
 description: Gate 内置 write-agent-notes：§3/§4 检索、Note 分类与 lifecycle；项目不需要安装同名技能。
+user-invocable: false
 ---
 
 # Write Agent Notes
@@ -159,9 +160,12 @@ Status: <状态>
 
 这个启动器只调用插件内置脚本，不复制技能。
 
-- 计划完成前或提交前，运行 `npm run verify-notes`，检查 tree、format、lifecycle、archived。
+- 计划完成前或提交前，运行 `npm run verify-notes`，检查 tree、format、lifecycle、archived。\n- `/gate-init` 同时生成 `.github/workflows/verify-notes.yml` 和 `.agents/gate/ci/` 校验脚本副本；CI 使用项目内副本，不依赖插件安装路径。
 - gate 会话内也可以用 `/gate-note-verify` 做同样的只读检查。
 - Verify PASS 后由 gate 执行 `gate_note_finalize` → `gate_note_verify` 工具 → `gate_record({node:'note-lifecycle'})`；lifecycle 不要用 npm 代替。
+- 新 Note 落地后检查它是否完全取代了某篇 implemented Note：仍有独立价值就报告 `/gate-note-archive` 候选，完全吸收则建议删除；不要自动归档。
+- `/gate-note-board [输出路径] [标题]` 生成决策看板 `board.html`，连接本地 `.agents/notes` 即可浏览与热刷新。
+- `/gate-note-archive <implemented-note> [--superseded-by <new-note>]` 才归档：加 `Archived:`、移入 `archived/`、写封印、报告入站链接；旧篇被完全吸收且无独立价值时删除，不归档。
 - `/gate-note-seal` 只给 `archived/` 中已有 Note 补写 `archived/manifest.json` 的 SHA-256 封印；不归档、不改 Note 内容。`verify` 报 manifest/封印缺失时由用户执行，不要自动写。
 
 
@@ -177,6 +181,12 @@ Status: <状态>
 - `references/simplification-checklist.md` — 简化机会自检
 - `references/quality-gate.md` — 写后语义自检：Problem / Alternatives / Consequences / Verification 判定 + 汇报形态
 - `references/verification.md` — 校验脚本说明
+
+
+
+
+
+
 
 
 

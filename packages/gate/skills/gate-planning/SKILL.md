@@ -1,6 +1,7 @@
 ---
 name: gate-planning
 description: Gate 规划方法：主 agent 读取后提炼任务并派发；worker 不加载技能。
+user-invocable: false
 ---
 
 ## 主 agent 使用

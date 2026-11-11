@@ -1,6 +1,7 @@
 ---
-name: gate-implementation-review
+name: gate-code-review
 description: "Gate 实现评审：沿 Standards 与 Spec 两轴评审固定点之后的改动，保留原始 code-review 方法；主 agent 决定 review worker 数量。"
+user-invocable: false
 ---
 
 ## Gate 使用
@@ -104,4 +105,5 @@ gate_record({node:'code-review', findings, reviewAxes, workerSessionIds})
 ```
 
 `reviewAxes` 必须包含 `standards` 与 `spec`；空的 `findings` 表示该轴通过。worker 不修复 findings。
+
 

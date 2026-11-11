@@ -1,6 +1,7 @@
 ---
 name: gate-implement
 description: Gate 实现方法：主 agent 读取后提炼任务并派发；subagent worker 不加载技能。
+user-invocable: false
 ---
 
 ## Main agent use
@@ -35,7 +36,7 @@ description: Gate 实现方法：主 agent 读取后提炼任务并派发；suba
 
 ### 实现期测试
 
-按改动需要编写或更新测试。测试优先能改善反馈或明确行为时使用；采用时加载 `tdd` 技能并遵循其流程。
+按改动需要编写或更新测试。测试优先能改善反馈或明确行为时使用；采用时加载 `gate-tdd` 技能并遵循其流程。
 
 工作时运行聚焦测试和相关静态检查。
 
@@ -62,7 +63,7 @@ gate 可能返回实质 findings。按属主处理：
 - 必需 ticket 已完成
 - 相关实现期检查通过
 - 实质 findings 已解决或明确报告为 blocked
-- 改动已准备好进入 `verify`
+- 改动已准备好进入 `gate-verify`
 
 返回 receipt，包含：
 
@@ -71,5 +72,5 @@ gate 可能返回实质 findings。按属主处理：
 - 每项 finding 的处置
 - 剩余风险、blocker 或需要决定的点
 
-不要执行 `verify`、不要把工作项标完成、不要推进 gate。verify 节点和最终完成由 gate 负责。
+不要执行 `gate-verify`、不要把工作项标完成、不要推进 gate。verify 节点和最终完成由 gate 负责。
 
