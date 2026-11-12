@@ -41,6 +41,19 @@ npm view dsh-gate-agent version
 - 账 户 Staged Packages 页面可能暂时为空，而版本仍在处理队列；不要在未确认前重复 `npm publish`，否则可能得到 `E409 Cannot publish over previously staged version`。
 - 传播完成后 `npm view` 的 `versions` 应同时包含 `0.0.0-stage` 与目标版本，`dist-tags.latest` 指向目标版本。
 
+### 安装来源（2026-11-12 实测事故）
+
+**不要让 profile 的安装 target 指向本地 `packages/gate` 路径。**
+
+本次通过 `install_bundle` 的绝对路径安装，profile 里生成 `link:E:/workspace/.../packages/gate`。卸载插件后，`packages/gate` 的源文件被一起删除；`git status` 显示全部为 deleted，但历史仍在，已用 `git restore --source=HEAD -- packages/gate` 恢复并重新 build。
+
+正确做法：
+
+- 安装 target 使用 npm 版本，例如 `dsh-gate-agent@0.1.1`；
+- profile 依赖应写成 `"dsh-gate-agent": "0.1.1"`，node_modules 里是 registry 包的独立副本（pnpm store 硬链接），卸载只删除 profile 里的副本；
+- 本地开发验证不要直接 link 正在开发的源目录；需要本地包时先 `npm pack`，用 tarball 或独立副本安装；
+- 发布 npm 不会自动替换已 link 的 profile，切换来源后要重新安装并重启 DSH。
+
 ### staged release 处理
 
 - npm 文档：[Staged publishing](https://docs.npmjs.com/staged-publishing/)。
@@ -65,6 +78,7 @@ npm view dsh-gate-agent version
 - 0.1.0 首次发布时约 5 分钟后才在 registry 可见；0.1.1 同样经历短暂传播延迟，`npm view` 最终确认 latest。
 - tarball 65 个文件、约 144.2 kB；包含 `lib/index.js`、skills、launchers、locale、icon、`cordis.patch.yml`、README。
 - `0.0.0-stage` 占位版本保留在 versions 列表，属于首次 staged publishing 的正常结果。
+- 安装事故：path/link 安装后卸载导致 `packages/gate` 源文件被删；已从 HEAD 恢复，当前 profile 改为 npm `dsh-gate-agent@0.1.1`，node_modules 为独立副本。
 - 发布配置提交：`chore(release): enable public npm publishing`。
 
 ## Alternatives considered

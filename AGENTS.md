@@ -81,6 +81,7 @@ DSH 开发文档参考：`deepseek-harness/docs`
 5. `npm publish --access public` 后，以 `npm view dsh-gate-agent version` / `dist-tags.latest` 为发布成功证据，不以 publish 命令返回为准。
 6. 首次发布会自动产生 `0.0.0-stage` 占位版本；实际版本可能延迟可见，可能需要在 npmjs.com 做 2FA staged approval。不要因 placeholder 立即重发，否则可能 `E409 Cannot publish over previously staged version`。
 7. 发布完成后提交版本号/发布配置并推送；profile link 安装与 npm 包是两种来源，npm 发布不会自动替换已 link 的 profile。
+8. 安装/升级插件必须使用 npm 版本（如 `dsh-gate-agent@0.1.1`），不要把 profile 的安装 target 指向本地 `packages/gate`。path 安装会生成 link，卸载 link 可能连源目录一起删除；本次已实际发生，源文件需从 Git 恢复。
 
 发布流程、故障排查和 0.1.0/0.1.1 实测记录见 [`2026-11-12-npm-publish-staged-release.md`](.agents/notes/implemented/process/2026-11-12-npm-publish-staged-release.md)；命令摘要见根 [`README.md`](README.md#发布)。
 
