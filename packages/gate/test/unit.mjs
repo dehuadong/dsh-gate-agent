@@ -221,6 +221,59 @@ const startImplAgent = { id: 'session-start-impl', session: { header: {} } }
 const startedImplement = await startImplHost.tools.gate_start_phase.execute({ node: 'implement', brief: '修一个错别字' }, { agent: startImplAgent })
 check('gate_start_phase starts direct implement', startedImplement.ok === true && startedImplement.task === '修一个错别字')
 
+const losslessJson = (value, stack = new Set()) => {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return true
+  if (typeof value === 'number') return Number.isFinite(value) && !Object.is(value, -0)
+  if (typeof value !== 'object' || stack.has(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  if (Array.isArray(value)) {
+    if (prototype !== Array.prototype || Reflect.ownKeys(value).length !== value.length + 1) return false
+    stack.add(value)
+    const ok = value.every(item => losslessJson(item, stack))
+    stack.delete(value)
+    return ok
+  }
+  if (prototype !== null && Object.getPrototypeOf(prototype) !== null) return false
+  const keys = Reflect.ownKeys(value)
+  if (keys.some(key => typeof key !== 'string' || !Object.prototype.propertyIsEnumerable.call(value, key))) return false
+  stack.add(value)
+  const ok = keys.every(key => losslessJson(value[key], stack))
+  stack.delete(value)
+  return ok
+}
+const nodeGuardWorkspace = makeWorkspace()
+const nodeGuardHost = fakeHost(nodeGuardWorkspace)
+const nodeGuardAgent = { id: 'session-node-guard', session: { header: {} } }
+saveState(nodeGuardWorkspace, nodeGuardAgent, { ...defaultState(), phase: 'orchestrating', node: 'plan-review', task: 'work', work: 'active' })
+const missingNodeRecord = await nodeGuardHost.tools.gate_record.execute({}, { agent: nodeGuardAgent })
+check('gate_record without node returns a lossless wrong-node error',
+  missingNodeRecord.ok === false
+  && missingNodeRecord.code === 'wrong-node'
+  && missingNodeRecord.expected === 'plan-review'
+  && missingNodeRecord.got === null
+  && missingNodeRecord.reason.includes('未提供')
+  && losslessJson(missingNodeRecord),
+  JSON.stringify(missingNodeRecord))
+saveState(nodeGuardWorkspace, nodeGuardAgent, defaultState())
+const missingNodeStart = await nodeGuardHost.tools.gate_start_phase.execute({}, { agent: nodeGuardAgent })
+const stateAfterMissingNodeStart = loadState(nodeGuardWorkspace, nodeGuardAgent)
+check('gate_start_phase rejects a missing node without mutating state',
+  missingNodeStart.ok === false
+  && missingNodeStart.code === 'invalid-node'
+  && stateAfterMissingNodeStart.phase === 'discuss'
+  && stateAfterMissingNodeStart.node === null,
+  JSON.stringify(missingNodeStart))
+saveState(nodeGuardWorkspace, nodeGuardAgent, { ...defaultState(), phase: 'docs', task: 'docs', work: 'active' })
+const missingNodeDocs = await nodeGuardHost.tools.gate_record.execute({}, { agent: nodeGuardAgent })
+check('docs gate_record without node returns a lossless wrong-node error',
+  missingNodeDocs.ok === false
+  && missingNodeDocs.code === 'wrong-node'
+  && missingNodeDocs.expected === 'docs'
+  && missingNodeDocs.got === null
+  && losslessJson(missingNodeDocs),
+  JSON.stringify(missingNodeDocs))
+saveState(nodeGuardWorkspace, nodeGuardAgent, defaultState())
+
 const fixWorkspace = makeWorkspace()
 const fixHost = fakeHost(fixWorkspace)
 const fixAgent = { id: 'session-fix', session: { header: {} } }

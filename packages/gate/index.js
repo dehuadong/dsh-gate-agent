@@ -1296,6 +1296,7 @@ export function apply(ctx, config = {}) {
     async execute(args, exec) {
       const root = rootAgentOf(ctx, exec.agent)
       if (root?.id !== exec.agent?.id) return { ok: false, code: 'root-only', reason: 'gate_start_phase 只能由 root agent 调用。' }
+      if (args.node !== 'plan' && args.node !== 'implement') return { ok: false, code: 'invalid-node', reason: 'node 必须是 plan 或 implement。' }
       const gate = resolveGate(ctx, exec.agent)
       const state = store.read(gate.root, exec.agent)
       const direct = args.node === 'implement' && state.planReady !== true
@@ -1382,7 +1383,7 @@ export function apply(ctx, config = {}) {
       const state = store.read(gate.root, exec.agent)
 
       if (state.phase === 'docs') {
-        if (args.node !== 'docs') return { ok: false, code: 'wrong-node', expected: 'docs', got: args.node, reason: 'docs 阶段只能通过 gate_record({node:"docs"}) 结束。' }
+        if (args.node !== 'docs') return { ok: false, code: 'wrong-node', expected: 'docs', got: args.node ?? null, reason: 'docs 阶段只能通过 gate_record({node:"docs"}) 结束。' }
         state.phase = 'discuss'; state.node = null; state.work = 'active'; state.blockReason = null; state.blockedFrom = null
         store.write(gate.root, exec.agent, state)
         return { ok: true, phase: state.phase, node: state.node, state: normalizeState(state) }
@@ -1390,7 +1391,7 @@ export function apply(ctx, config = {}) {
       if (state.phase !== 'orchestrating' && state.phase !== 'reviewing') {
         return { ok: false, code: 'not-orchestrating', phase: state.phase, stateSource: store.source, reason: `当前 phase 是 ${state.phase}；先进入对应阶段。` }
       }
-      if (state.node !== args.node) return { ok: false, code: 'wrong-node', expected: state.node, got: args.node, reason: `当前节点是 ${state.node ?? '无'}，不是 ${args.node}。` }
+      if (state.node !== args.node) return { ok: false, code: 'wrong-node', expected: state.node ?? null, got: args.node ?? null, reason: `当前节点是 ${state.node ?? '无'}，请求的 node 是 ${args.node ?? '未提供'}。` }
 
       const axesError = reviewAxesError(args)
       if (axesError !== undefined) return { ok: false, ...axesError }
