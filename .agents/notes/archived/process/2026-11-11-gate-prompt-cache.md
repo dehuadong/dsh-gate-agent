@@ -1,6 +1,7 @@
 # Agent Note: Gate system prompt 与节点切换
 
 Status: implemented
+Archived: 2026-11-12
 
 工作项：让 `gate:protocol` 在一个 protocol variant 内保持字节稳定；把动态状态移到只读 `gate_status`，把节点方法改成静态表，减少状态/节点更新造成的整段 prompt 重复与前缀失效。
 

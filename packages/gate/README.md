@@ -30,13 +30,13 @@ Host 插件：按阶段控制 agent 的写入与评审流程，提供 `/gate-*` 
 | `/gate-block [原因]` | 可选 | 手动暂停：保留当前节点；手动 block 后用 `/gate-resume` 回原节点 |
 | `/gate-resume` | 无 | 解冻 block：回到 block 前的节点；轮次耗尽回 discuss |
 | `/gate-return-discuss` | 无 | 用户手动回到 discuss |
-| `/gate-status` | 无 | 只读状态，包括 plan 就绪、轮次与 verify 结果；与模型工具 `gate_status` 共用同一渲染 |
+| `/gate-status` | 无 | 只读状态；模型工具 `gate_status` 另带当前 procedure，worker 调用不带 root procedure |
 
-只有**启动或继续编排**的命令在一次 handler 内写状态并立即 `agent.followup`：`/gate-enter-plan`、`/gate-enter-implement`、`/gate-docs`、`/gate-implement-review`、`/gate-code-verify`、`/gate-propose-review`，以及回到 active phase 的 `/gate-resume`。`/gate-init` 也 follow-up 一次，用于首次初始化反馈。消息携带 `rawInput`、当前 phase 和命令名，source 是 `gate-command`。`/gate-block`、`/gate-return-discuss` 只改状态，`/gate-status` 只读，都不 follow-up。首页提交命令由宿主创建 session；命令本身不创建 session。
+只有**启动或继续编排**的命令在一次 handler 内写状态并立即 `agent.followup`：`/gate-enter-plan`、`/gate-enter-implement`、`/gate-docs`、`/gate-implement-review`、`/gate-code-verify`、`/gate-propose-review`，以及回到 active phase 的 `/gate-resume`。`/gate-init` 也 follow-up 一次，用于首次初始化反馈。消息携带 `rawInput`、当前 phase、命令名和当前 procedure（首行是 `当前 phase/node`），source 是 `gate-command`。`/gate-block`、`/gate-return-discuss` 只改状态，`/gate-status` 只读，都不 follow-up；这些命令之后由 `gate_status`/guard 提供当前 procedure 或拒绝越权动作。首页提交命令由宿主创建 session；命令本身不创建 session。
 
 进入阶段不等于执行。主代理派发 worker，再用 `gate_record` 推进节点。
 
-root `gate:protocol` 只随 protocol variant 切换（discuss / plan / implement / note-lifecycle / fix-bug / docs / reviewing-* / blocked / complete）；同一 variant 内的节点切换不改变 root prompt；worker prompt 仍按 worker 的 node 渲染。当前节点、轮次和 verify 结果不在 prompt 中：主代理在每次派发前调用只读 `gate_status`，再按静态“节点方法”表加载对应技能。
+root `gate:protocol` 是静态阶段方法论，覆盖 discuss / plan / implement / note-lifecycle / fix-bug / docs / reviewing-* / blocked / complete，字节不随 phase/node 变化；worker prompt 仍按 node 渲染。当前 phase/node 的 procedure、工具字段、方法加载和轮次由 `gate_status`、`gate_record`、`gate_start_phase` 或命令 follow-up 返回；主代理按当前 procedure 的 method 加载技能。
 
 离开 discuss 不要求用户输入 slash command：用户在对话或 `ask_user_question` 中明确授权后，主 agent 可调用 `gate_start_phase({node:'plan'|'implement', brief})` 进入阶段。`/gate-enter-plan` / `/gate-enter-implement` 仍是用户直接进入的入口。
 
@@ -237,6 +237,8 @@ blocked 时写入被拒绝；review 轮次耗尽进入 blocked 后 `exhausted` �
 
 只允许 root agent 调用。child worker 调用返回 `root-only`。
 
+返回值带 transition 后 state 的当前 procedure（首行 `当前 phase/node`）；失败返回当前 state 的 procedure，不返回未到达的下一 phase procedure。`gate_start_phase` 同理。
+
 ```text
 gate_record({
   node,
@@ -260,15 +262,15 @@ gate_record({
 
 ## gate_status
 
-只读，root 和 worker 可调用；worker 读所属 root 的状态。
+只读，root 和 worker 可调用；worker 读所属 root 的状态，但**不返回 root procedure**（root procedure 只给 root）。
 
 ```text
 gate_status()
 ```
 
-返回 phase/node/task/work/blockReason/planReady/rounds，以及按条件出现的 notes/exhausted/verify 行；blocked 时还有“解冻后”行。格式与 `/gate-status` 相同。失败返回 `root-unresolved`（worker 的 root 不可解析）或 `state-unavailable`（工作区不可解析）。
+root 返回当前 procedure（首行 `当前 phase/node`、method、procedure 正文）加 phase/node/task/work/blockReason/planReady/rounds，以及按条件出现的 notes/exhausted/verify 行；blocked 时还有“解冻后”行。worker 只返回状态行。失败返回 `root-unresolved`（worker 的 root 不可解析）或 `state-unavailable`（工作区不可解析）。
 
-主代理在每次派 subagent 前、推进节点前，以及 compaction 后应先调用它确认当前节点；`gate_record` 的返回值仍带 state 快照。
+主代理在 compaction 后、失败恢复时，或没有拿到最新 procedure 时调用它；`gate_record`、`gate_start_phase` 和命令 follow-up 已主动携带当前/下一 procedure。`gate_record` 成功返回 transition 后新 state 的 procedure，失败返回当前 state 的 procedure；`gate_start_phase` 同理。
 
 ## Verify 证据
 
@@ -301,6 +303,8 @@ gate_status()
 3. 删除旧 `.agents/implement-gate.json`、`.agents/state/implement-gate`；只保留一个新的 gate 实现。
 4. 工具面仍有 `implement_gate` 时，先移除旧实现。
 5. 回滚：`plugin_manager remove_bundle dsh-gate-agent`，恢复 profile 依赖/lockfile 到迁移前状态；回滚时不要同时启用旧 gate。
+
+方法论/procedure 分层的回滚：恢复上一版 per-variant `gate:protocol` 与命令 follow-up 实现；不做双轨运行。
 
 ## 已知限制
 
