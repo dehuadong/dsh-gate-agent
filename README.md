@@ -33,6 +33,23 @@
 
 安装前必须先 `pnpm build`；`lib/` 不入库。
 
+## 发布
+
+发布 `packages/gate` 到 npm：
+
+```text
+pnpm build
+cd packages/gate
+npm pack --dry-run --json
+npm publish --access public
+npm view dsh-gate-agent version
+```
+
+- 包的 `publishConfig.access` 是 `public`，`files` 只包含 `lib`、skills、launchers、locale、icon、README 和 patch。
+- 首次发布会先出现 `0.0.0-stage` 占位版本，这是 npm staged publishing；实际版本可能延迟可见，`npm view` 的 `dist-tags.latest` 才是发布成功证据。
+- 不要因为 placeholder 立即重复 publish；先查 npmjs.com staged 页面或等待传播。
+- 发布经验与故障排查见 [`2026-11-12-npm-publish-staged-release.md`](.agents/notes/implemented/process/2026-11-12-npm-publish-staged-release.md)。
+
 ## 文档
 
 - 文档属主与位置：[`docs/AGENTS.md`](docs/AGENTS.md)
