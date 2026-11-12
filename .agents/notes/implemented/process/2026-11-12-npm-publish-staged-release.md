@@ -61,8 +61,9 @@ npm view dsh-gate-agent version
 
 ## Implementation evidence
 
-- `dsh-gate-agent@0.1.0` 已发布，`dist-tags.latest = 0.1.0`，tarball `https://registry.npmjs.org/dsh-gate-agent/-/dsh-gate-agent-0.1.0.tgz`。
-- tarball 65 个文件、约 143.8 kB；包含 `lib/index.js`、skills、launchers、locale、icon、`cordis.patch.yml`、README。
+- `dsh-gate-agent@0.1.1` 已发布，`dist-tags.latest = 0.1.1`，tarball `https://registry.npmjs.org/dsh-gate-agent/-/dsh-gate-agent-0.1.1.tgz`；本次是技能加载提示词优化后的 patch 版本。
+- 0.1.0 首次发布时约 5 分钟后才在 registry 可见；0.1.1 同样经历短暂传播延迟，`npm view` 最终确认 latest。
+- tarball 65 个文件、约 144.2 kB；包含 `lib/index.js`、skills、launchers、locale、icon、`cordis.patch.yml`、README。
 - `0.0.0-stage` 占位版本保留在 versions 列表，属于首次 staged publishing 的正常结果。
 - 发布配置提交：`chore(release): enable public npm publishing`。
 
