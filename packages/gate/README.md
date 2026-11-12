@@ -6,10 +6,39 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 
 ## 安装与启用
 
-- **开发安装**：通过 `plugin_manager` 的 `install_bundle`，target 指向本包源码目录的绝对路径（例如 `E:\workspace\dsh-plugin\gate\packages\gate`）。profile 里会生成 `link:`；这是 DSH 插件的标准开发方式。
-- **生产安装**：使用 npm 版本，例如 `dsh-gate-agent@0.1.1`。
-- **卸载**：用 `plugin_manager` 或 `pnpm remove` 移除依赖；不要用递归删除工具手动清理 profile 的 `node_modules`。Windows 上 link 是 junction，递归删除可能穿过它删除源目录；`pnpm remove` 实测只移除 link。
-- 安装/升级后重启 DSH，使 bundle 从 `lib/index.js` 加载。
+### 开发安装（link，标准方式）
+
+1. 在仓库根构建：
+
+   ```text
+   pnpm install
+   pnpm build
+   ```
+
+2. 安装到 profile：`plugin_manager` 的 `install_bundle`，target 指向本包源码目录的绝对路径，例如：
+
+   ```text
+   E:\workspace\dsh-plugin\gate\packages\gate
+   ```
+
+   profile 会记录：
+
+   ```json
+   "dsh-gate-agent": "link:E:/workspace/dsh-plugin/gate/packages/gate"
+   ```
+
+   这是 DSH 插件的标准开发方式；源码改动后重新 `pnpm build`，重启 DSH 即可加载新的 `lib/index.js`。
+
+3. 卸载用 `plugin_manager` 的 `remove_bundle` 或 `pnpm remove`。不要用递归删除工具手动清理 profile 的 `node_modules`：Windows 上 link 是 junction，递归删除可能穿过它删除源目录；`pnpm remove` 实测只移除 link，保留 source。
+
+### 生产安装（npm）
+
+- `install_bundle` target 使用 npm 版本，例如 `dsh-gate-agent@0.1.1`。
+- npm 安装的是独立副本，卸载不会影响本仓库源码。
+
+### 启用
+
+- 安装/升级后重启 DSH。
 - 插件由“开发者模式”preset 启用。启用后先执行 `/gate-init`。
 
 `/gate-init` 会：
