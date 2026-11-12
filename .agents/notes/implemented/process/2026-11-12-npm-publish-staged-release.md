@@ -43,16 +43,14 @@ npm view dsh-gate-agent version
 
 ### 安装来源（2026-11-12 实测事故）
 
-**不要让 profile 的安装 target 指向本地 `packages/gate` 路径。**
-
-本次通过 `install_bundle` 的绝对路径安装，profile 里生成 `link:E:/workspace/.../packages/gate`。卸载插件后，`packages/gate` 的源文件被一起删除；`git status` 显示全部为 deleted，但历史仍在，已用 `git restore --source=HEAD -- packages/gate` 恢复并重新 build。
+标准开发安装就是 `link:`：`install_bundle` 指向本地 `packages/gate`，profile 依赖为 `link:E:/workspace/.../packages/gate`。本次源目录被清空，是一次**递归删除穿过 Windows junction**的事故，不是 link 安装本身的问题；同环境下 pnpm 11.21/11.28.5 的 `pnpm remove` 实测只移除 link、保留 target。
 
 正确做法：
 
-- **生产安装**：安装 target 使用 npm 版本，例如 `dsh-gate-agent@0.1.1`；profile 依赖写成 `"dsh-gate-agent": "0.1.1"`，node_modules 是 registry 包的独立副本（pnpm store 硬链接），卸载只删除 profile 副本。
-- **开发安装**：不要直接 link 正在开发的源目录。用 `npm pack` 生成 `.tgz`，把 tarball 绝对路径交给 `install_bundle`；或 link 一个可丢弃副本。tarball 安装也是独立副本，卸载不会删除源目录。
-- 本次修复后 profile 使用本地 tarball：`file:E:/workspace/dsh-plugin/gate/.artifacts/dsh-gate-agent-0.1.1.tgz`；源目录仍是开发目录，改代码后重新 pack/install 验证。
+- **开发安装**：使用标准 `link:` 指向源码目录；卸载使用 `plugin_manager` / `pnpm remove`，不要用递归删除工具手动清理 profile 的 `node_modules`。
+- **生产安装**：使用 npm 版本，例如 `dsh-gate-agent@0.1.1`；profile 依赖写成 `"dsh-gate-agent": "0.1.1"`，node_modules 是 registry 包的独立副本。
 - 发布 npm 不会自动替换已 link 的 profile，切换来源后要重新安装并重启 DSH。
+- 如果源目录再次被清空，先停用递归删除操作，从 Git 恢复；不要把 link 安装本身当作根因。
 
 ### staged release 处理
 
@@ -78,7 +76,7 @@ npm view dsh-gate-agent version
 - 0.1.0 首次发布时约 5 分钟后才在 registry 可见；0.1.1 同样经历短暂传播延迟，`npm view` 最终确认 latest。
 - tarball 65 个文件、约 144.2 kB；包含 `lib/index.js`、skills、launchers、locale、icon、`cordis.patch.yml`、README。
 - `0.0.0-stage` 占位版本保留在 versions 列表，属于首次 staged publishing 的正常结果。
-- 安装事故：path/link 安装后卸载导致 `packages/gate` 源文件被删；已从 HEAD 恢复，当前 profile 改为本地 tarball `file:E:/workspace/dsh-plugin/gate/.artifacts/dsh-gate-agent-0.1.1.tgz`，node_modules 为独立副本。
+- 安装事故：path/link 安装后源目录被清空；已从 HEAD 恢复。标准 `pnpm remove` 实测不会删除 link target，事故按递归删除穿过 junction 记录；当前 profile 恢复为标准 `link:E:/workspace/dsh-plugin/gate/packages/gate`。
 - 发布配置提交：`chore(release): enable public npm publishing`。
 
 ## Alternatives considered

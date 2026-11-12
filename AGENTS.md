@@ -81,7 +81,7 @@ DSH 开发文档参考：`deepseek-harness/docs`
 5. `npm publish --access public` 后，以 `npm view dsh-gate-agent version` / `dist-tags.latest` 为发布成功证据，不以 publish 命令返回为准。
 6. 首次发布会自动产生 `0.0.0-stage` 占位版本；实际版本可能延迟可见，可能需要在 npmjs.com 做 2FA staged approval。不要因 placeholder 立即重发，否则可能 `E409 Cannot publish over previously staged version`。
 7. 发布完成后提交版本号/发布配置并推送；profile link 安装与 npm 包是两种来源，npm 发布不会自动替换已 link 的 profile。
-8. 安装/升级时不要 link 正在开发的源目录。生产安装用 npm 版本（如 `dsh-gate-agent@0.1.1`）；开发安装用本地 tarball（`npm pack` 后安装）或 link 一个可丢弃副本。Windows 上 `link:` 是 junction，卸载时递归删除可能穿过 junction 删除源目录；本次已实际发生，源文件需从 Git 恢复。
+8. 开发安装使用 `link:` 指向本地插件目录（`install_bundle` 绝对路径即可），这是标准方式；生产安装用 npm 版本。卸载用 `plugin_manager`/`pnpm remove`，不要手动递归删除 profile 的 link：Windows junction 可能被删穿到源目录。本次源目录被清空是一次递归删除事故，不是 link 安装本身的问题；已从 Git 恢复。
 
 发布流程、故障排查和 0.1.0/0.1.1 实测记录见 [`2026-11-12-npm-publish-staged-release.md`](.agents/notes/implemented/process/2026-11-12-npm-publish-staged-release.md)；命令摘要见根 [`README.md`](README.md#发布)。
 
