@@ -48,7 +48,7 @@ npm view dsh-gate-agent version
 正确做法：
 
 - **开发安装**：使用标准 `link:` 指向源码目录；卸载使用 `plugin_manager` / `pnpm remove`，不要用递归删除工具手动清理 profile 的 `node_modules`。
-- **生产安装**：使用 npm 版本，例如 `dsh-gate-agent@0.1.1`；profile 依赖写成 `"dsh-gate-agent": "0.1.1"`，node_modules 是 registry 包的独立副本。
+- **生产安装**：使用 npm 版本，例如 `dsh-gate-agent@0.1.2`；profile 依赖写成 `"dsh-gate-agent": "0.1.2"`，node_modules 是 registry 包的独立副本。
 - 发布 npm 不会自动替换已 link 的 profile，切换来源后要重新安装并重启 DSH。
 - 如果源目录再次被清空，先停用递归删除操作，从 Git 恢复；不要把 link 安装本身当作根因。
 
@@ -73,7 +73,8 @@ npm view dsh-gate-agent version
 ## Implementation evidence
 
 - `dsh-gate-agent@0.1.1` 已发布，`dist-tags.latest = 0.1.1`，tarball `https://registry.npmjs.org/dsh-gate-agent/-/dsh-gate-agent-0.1.1.tgz`；本次是技能加载提示词优化后的 patch 版本。
-- 0.1.0 首次发布时约 5 分钟后才在 registry 可见；0.1.1 同样经历短暂传播延迟，`npm view` 最终确认 latest。
+- `dsh-gate-agent@0.1.2` 已发布，`dist-tags.latest = 0.1.2`，包含更新后的插件 README 安装章节（开发 link / 生产 npm）。
+- 0.1.0 首次发布时约 5 分钟后才在 registry 可见；0.1.1、0.1.2 同样经历短暂传播延迟，`npm view` 最终确认 latest。
 - tarball 65 个文件、约 144.2 kB；包含 `lib/index.js`、skills、launchers、locale、icon、`cordis.patch.yml`、README。
 - `0.0.0-stage` 占位版本保留在 versions 列表，属于首次 staged publishing 的正常结果。
 - 安装事故：path/link 安装后源目录被清空；已从 HEAD 恢复。标准 `pnpm remove` 实测不会删除 link target，事故按递归删除穿过 junction 记录；当前 profile 恢复为标准 `link:E:/workspace/dsh-plugin/gate/packages/gate`。

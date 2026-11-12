@@ -33,7 +33,7 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 
 ### 生产安装（npm）
 
-- `install_bundle` target 使用 npm 版本，例如 `dsh-gate-agent@0.1.1`。
+- `install_bundle` target 使用 npm 版本，例如 `dsh-gate-agent@0.1.2`。
 - npm 安装的是独立副本，卸载不会影响本仓库源码。
 
 ### 启用

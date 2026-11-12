@@ -74,7 +74,7 @@ DSH 开发文档参考：`deepseek-harness/docs`
   pnpm build
   ```
   本次清空是一次递归删除穿过 junction 的事故，不是 link 安装本身的问题。
-- **生产安装用 npm 版本**，例如 `dsh-gate-agent@0.1.1`；npm 副本与开发 link 是两种来源，发布 npm 不会自动替换已 link 的 profile。
+- **生产安装用 npm 版本**，例如 `dsh-gate-agent@0.1.2`；npm 副本与开发 link 是两种来源，发布 npm 不会自动替换已 link 的 profile。
 - 安装/升级后重启 DSH；插件由“开发者模式”preset 启用，启用后先 `/gate-init`。
 
 ## 文档与约定
@@ -97,7 +97,7 @@ DSH 开发文档参考：`deepseek-harness/docs`
 7. 发布完成后提交版本号/发布配置并推送；profile link 安装与 npm 包是两种来源，npm 发布不会自动替换已 link 的 profile。
 8. 开发/生产安装与卸载规则见 [插件安装](#插件安装)；不要用递归删除清理 profile 的 link。
 
-发布流程、故障排查和 0.1.0/0.1.1 实测记录见 [`2026-11-12-npm-publish-staged-release.md`](.agents/notes/implemented/process/2026-11-12-npm-publish-staged-release.md)；命令摘要见根 [`README.md`](README.md#发布)。
+发布流程、故障排查和 0.1.0–0.1.2 实测记录见 [`2026-11-12-npm-publish-staged-release.md`](.agents/notes/implemented/process/2026-11-12-npm-publish-staged-release.md)；命令摘要见根 [`README.md`](README.md#发布)。
 
 ## 重要改动必须留笔记
 
