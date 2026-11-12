@@ -2,8 +2,26 @@
 
 import path from 'node:path'
 
+export interface PathClassification {
+  absolute: string
+  relative: string
+  outside: boolean
+}
+
+export interface ShellAccess {
+  write: boolean
+  outsideTargets: string[]
+}
+
+interface SegmentAccess {
+  write: boolean
+  outsideTargets: string[]
+}
+
+type AssignmentMap = Map<string, string>
+
 /** Classify a file target relative to the workspace root and the session cwd. */
-export function classifyPath(root, value, cwd = root) {
+export function classifyPath(root: string, value: unknown, cwd = root): PathClassification {
   const absolute = path.resolve(cwd, String(value ?? ''))
   const relative = path.relative(root, absolute).replaceAll('\\', '/')
   const outside = relative === '..' || relative.startsWith('../') || path.isAbsolute(relative)
@@ -13,36 +31,39 @@ export function classifyPath(root, value, cwd = root) {
 /** Explicit write verbs recognized in one shell statement. */
 const WRITE_VERB = /(?:^|[\s;(])(Set-Content|Add-Content|Out-File|New-Item|Remove-Item|Move-Item|Copy-Item|Rename-Item|Clear-Content|Set-Item|mkdir|md|touch|tee|rm|mv|cp|sed\s+-i)\b/iu
 
-function pathArgs(text) {
-  const beforePipe = String(text).split('|')[0]
+function pathArgs(text: string): string[] {
+  const beforePipe = String(text).split('|')[0] ?? ''
   return [...beforePipe.matchAll(/(?:'([^']+)'|"([^"]+)"|(\S+))/gu)]
     .map(match => match[1] ?? match[2] ?? match[3])
-    .filter(value => value !== undefined && !value.startsWith('-'))
+    .filter((value): value is string => value !== undefined && !value.startsWith('-'))
 }
 
 /** Simple same-command assignment map; anything else stays unresolved. */
-function assignments(text) {
-  const map = new Map()
+function assignments(text: string): AssignmentMap {
+  const map: AssignmentMap = new Map()
   for (const match of String(text).matchAll(/(?:^|[;\n])\s*\$?([A-Za-z_]\w*)\s*=\s*(?:'([^']*)'|"([^"]*)"|(\S+))/gu)) {
-    map.set(match[1], match[2] ?? match[3] ?? match[4])
+    const key = match[1]
+    if (key !== undefined) map.set(key, match[2] ?? match[3] ?? match[4] ?? '')
   }
   return map
 }
 
-function resolveToken(token, map) {
+function resolveToken(token: string, map: AssignmentMap): string {
   const variable = /^\$([A-Za-z_]\w*)$/u.exec(token)
   if (variable === null) return token
-  return map.get(variable[1]) ?? token
+  const key = variable[1]
+  return (key === undefined ? token : map.get(key)) ?? token
 }
 
-function redirectionTargets(text) {
+function redirectionTargets(text: string): string[] {
   return [...String(text).matchAll(/(?:^|\s)>{1,2}\s*(?:'([^']+)'|"([^"]+)"|([^\s;&|]+))/gu)]
     .map(match => match[1] ?? match[2] ?? match[3])
+    .filter((value): value is string => value !== undefined)
 }
 
 /** Files named by a write command after a pipe (`... | tee file`, `... | Set-Content file`). */
-function pipeTargets(text) {
-  const targets = []
+function pipeTargets(text: string): string[] {
+  const targets: string[] = []
   for (const part of String(text).split('|').slice(1)) {
     const body = part.replace(/^\s*(?:tee|Set-Content|Out-File|Add-Content)\b/iu, '')
     if (body === part) continue
@@ -51,7 +72,7 @@ function pipeTargets(text) {
   return targets
 }
 
-function addTarget(targets, token, map) {
+function addTarget(targets: string[], token: string | undefined, map: AssignmentMap): void {
   if (token === undefined || token === '') return
   if (token.startsWith('$')) {
     const resolved = resolveToken(token, map)
@@ -62,14 +83,14 @@ function addTarget(targets, token, map) {
 }
 
 /** Decide one shell statement: which explicit paths it writes. */
-function segmentAccess(text, root, cwd, map) {
+function segmentAccess(text: string, root: string, cwd: string, map: AssignmentMap): SegmentAccess {
   if (/\bgit\s+(?:status|add|commit|push)\b/iu.test(text)) {
     return { write: false, outsideTargets: [] }
   }
   if (/\bgit\s+(?:checkout|reset|clean)\b/iu.test(text)) {
     return { write: true, outsideTargets: [] }
   }
-  const raw = []
+  const raw: string[] = []
   const verb = WRITE_VERB.exec(text)
   if (verb !== null) {
     const tail = text.slice(verb.index + verb[0].length)
@@ -77,7 +98,7 @@ function segmentAccess(text, root, cwd, map) {
   }
   for (const token of redirectionTargets(text)) addTarget(raw, token, map)
   for (const token of pipeTargets(text)) addTarget(raw, token, map)
-  const outsideTargets = []
+  const outsideTargets: string[] = []
   for (const value of raw) {
     const target = classifyPath(root, path.resolve(cwd, value))
     if (target.outside) outsideTargets.push(target.absolute)
@@ -86,12 +107,12 @@ function segmentAccess(text, root, cwd, map) {
 }
 
 /** Split statements; pipelines stay in one statement. */
-function segments(text) {
+function segments(text: string): string[] {
   return String(text).split(/&&|\|\||;|\r?\n/u).map(part => part.trim()).filter(Boolean)
 }
 
 /** Summarize explicit writes. */
-export function shellAccess(command, root, cwd = root) {
+export function shellAccess(command: string, root: string, cwd = root): ShellAccess {
   const map = assignments(command)
   const parts = segments(command).map(part => segmentAccess(part, root, cwd, map)).filter(item => item.write)
   return {

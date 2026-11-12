@@ -1,0 +1,369 @@
+{
+  "tools": [
+    {
+      "name": "gate_start_phase",
+      "description": "在用户明确授权后从 discuss/complete 进入 plan 或 implement。仅 root agent 可调用；授权可来自对话或 ask_user_question，不要求用户输入 slash command。",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "type": "string",
+            "enum": [
+              "plan",
+              "implement"
+            ]
+          },
+          "brief": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "node"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "gate_record",
+      "description": "记录 root agent 派发的节点 worker 结果并推进 gate 状态。worker 节点要求 workerSessionIds；review 节点要求两轴结果；verify 要求 toolResults。仅 root agent 可调用。",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "type": "string",
+            "enum": [
+              "plan",
+              "plan-review",
+              "proposal-review",
+              "plan-revise",
+              "implement",
+              "code-review",
+              "implement-revise",
+              "verify",
+              "verify-standalone",
+              "note-lifecycle",
+              "docs",
+              "code-review-standalone",
+              "fix-bug"
+            ]
+          },
+          "workerSessionIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reviewAxes": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "task": {
+            "type": "string"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "requiresDiscussion": {
+            "type": "boolean"
+          },
+          "discussionReason": {
+            "type": "string"
+          },
+          "notePaths": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "接受 .agents/notes/<lifecycle>/<class>/...、<lifecycle>/<class>/... 或 <class>/...；state 归一为完整路径。"
+                },
+                "class": {
+                  "type": "string",
+                  "enum": [
+                    "feature",
+                    "bug-fix",
+                    "simplification",
+                    "architecture",
+                    "process",
+                    "testing"
+                  ]
+                },
+                "lifecycle": {
+                  "type": "string",
+                  "enum": [
+                    "proposed",
+                    "implemented"
+                  ]
+                }
+              },
+              "required": [
+                "path",
+                "class",
+                "lifecycle"
+              ]
+            }
+          },
+          "noteDecision": {
+            "type": "string",
+            "enum": [
+              "new",
+              "update",
+              "in-place",
+              "mechanical"
+            ]
+          },
+          "noteSearch": {
+            "type": "string"
+          },
+          "verification": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "commands": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "description": "gate workspace 内普通文件路径。"
+                }
+              },
+              "toolResults": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "description": "verify worker session log 中真实 tool/result 的 call_... id。"
+                }
+              },
+              "passed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "commands",
+              "evidence",
+              "toolResults",
+              "passed"
+            ]
+          }
+        },
+        "required": [
+          "node"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "gate_status",
+      "description": "读取 Gate 当前状态与当前 procedure（root）。只读；派发 worker 前、推进节点前、compaction 后、失败后恢复时使用。worker 调用返回 root 状态但不返回 root procedure。",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "gate_note_write",
+      "description": "写 proposed Agent Note，或在 planning 原地更新已存在的 implemented Note。仅 planning worker；通用 write/edit/shell 被限制。",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "相对 .agents/notes 的路径；proposed/ 可新建，implemented/ 只能编辑已存在文件。"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "gate_note_verify",
+      "description": "运行内置 notes 校验；note-lifecycle 中通过后设置 noteVerified。root-only。",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "gate_note_finalize",
+      "description": "把 note-lifecycle 中的 proposed Note 移到 implemented 并更新头块；root-only。",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "decisionBodies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "body"
+              ]
+            }
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    }
+  ],
+  "commands": [
+    {
+      "name": "gate-init",
+      "description": "初始化 notes、AGENTS.md、verify-notes 与 GitHub Actions CI",
+      "input": null
+    },
+    {
+      "name": "gate-enter-plan",
+      "description": "按用户简述进入 planning",
+      "input": {
+        "hint": "[简单需求]"
+      }
+    },
+    {
+      "name": "gate-enter-implement",
+      "description": "从已确认规划或用户简述进入 implementation",
+      "input": {
+        "hint": "[简单说明]"
+      }
+    },
+    {
+      "name": "gate-fix-bug",
+      "description": "为已授权的实现缺陷派发 fix worker",
+      "input": {
+        "hint": "[缺陷简述]"
+      }
+    },
+    {
+      "name": "gate-docs",
+      "description": "开始文档治理",
+      "input": null
+    },
+    {
+      "name": "gate-implement-review",
+      "description": "开始独立只读 code review",
+      "input": {
+        "hint": "<工作项>"
+      }
+    },
+    {
+      "name": "gate-code-verify",
+      "description": "开始独立只读验收",
+      "input": {
+        "hint": "<工作项>"
+      }
+    },
+    {
+      "name": "gate-propose-review",
+      "description": "开始独立提案评审",
+      "input": {
+        "hint": "<工作项>"
+      }
+    },
+    {
+      "name": "gate-block",
+      "description": "手动暂停：保留当前节点并停止写入/派 worker；对话仍可继续",
+      "input": {
+        "hint": "[原因]"
+      }
+    },
+    {
+      "name": "gate-resume",
+      "description": "解冻 blocked：回到 block 前的节点；轮次耗尽回 discuss",
+      "input": null
+    },
+    {
+      "name": "gate-return-discuss",
+      "description": "回到 discuss",
+      "input": null
+    },
+    {
+      "name": "gate-status",
+      "description": "查看当前 gate 状态",
+      "input": null
+    },
+    {
+      "name": "gate-note-verify",
+      "description": "只读检查 notes tree/format/lifecycle/archived",
+      "input": null
+    },
+    {
+      "name": "gate-note-archive",
+      "description": "将 implemented Note 归档到 archived/：加 Archived、移动、封印并报告入站链接",
+      "input": {
+        "hint": "<implemented-note> [--superseded-by <new-note>]"
+      }
+    },
+    {
+      "name": "gate-note-board",
+      "description": "生成决策看板 board.html（轻量模式，连接本地 notes 目录）",
+      "input": {
+        "hint": "[输出路径] [标题]"
+      }
+    },
+    {
+      "name": "gate-note-seal",
+      "description": "只给 archived/ 中已有 Note 补写 manifest.json 的 SHA-256 封印；不归档、不改 Note 内容",
+      "input": null
+    }
+  ],
+  "sections": [
+    {
+      "name": "gate:protocol",
+      "order": 1
+    }
+  ],
+  "guards": 1,
+  "preSteps": [
+    "agent/pre-step"
+  ]
+}

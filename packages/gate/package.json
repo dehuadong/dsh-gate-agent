@@ -5,22 +5,24 @@
   "type": "module",
   "description": "Full write gate and phase orchestrator with plugin-local skills.",
   "exports": {
-    ".": "./index.js",
+    ".": "./lib/index.js",
     "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg"
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
   },
   "files": [
-    "index.js",
-    "src/",
-    "skills/",
-    "launchers/",
+    "lib",
+    "skills",
+    "launchers",
     "cordis.patch.yml",
     "README.md",
     "locale/*.json",
     "icon.svg"
   ],
   "scripts": {
-    "test": "node test/unit.mjs && node test/composition.mjs"
+    "build": "node scripts/bundle.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node scripts/bundle.mjs && node scripts/check-split.mjs && node test/unit.mjs && node test/composition.mjs && node test/registry.mjs"
   },
   "dsh": {
     "bundle": {

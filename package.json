@@ -3,9 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.21.0",
   "description": "Repository for the dsh-gate-agent plugin package.",
   "scripts": {
-    "test": "node packages/gate/test/unit.mjs && node packages/gate/test/composition.mjs",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm run build && node packages/gate/scripts/check-split.mjs && node packages/gate/test/unit.mjs && node packages/gate/test/composition.mjs && node packages/gate/test/registry.mjs",
     "verify-notes": "node .agents/skills/write-agent-notes/scripts/verify-agent-note-tree.ts --root .agents/notes && node .agents/skills/write-agent-notes/scripts/verify-agent-note-format.ts --root .agents/notes && node .agents/skills/write-agent-notes/scripts/verify-agent-note-lifecycle.ts --root .agents/notes && node .agents/skills/write-agent-notes/scripts/verify-archived-agent-notes.ts --root .agents/notes"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "dsh-gate-agent": "workspace:*",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.7.3"
   }
 }

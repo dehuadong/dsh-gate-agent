@@ -1,54 +1,84 @@
 # dsh-gate-agent
 
-Host 插件：编排 gate 阶段、限制 worker 角色与评审流程，提供 `/gate-*` 命令、`gate_record` / `gate_status` 工具和专项技能。
+Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验收和 Note 生命周期，提供 `/gate-*` 命令、`gate_*` 工具和专项技能。
 
-> 这是流程门禁，不是 OS 级安全边界。硬拒绝由 `ctx.tools.guard` 提供；gate 不 append `sandbox/mode`，blocked 的写冻结是 guard/restrict 的进程级限制（显式写工具/写型 shell），真正需要隔离时仍使用 DSH 的 sandbox/approval。未知工具与任意 shell 语义不会被完整分析。
+> 这是流程门禁，不是 OS 级安全边界。硬拒绝由 `ctx.tools.guard` 提供；blocked 的写冻结是 guard/restrict 的进程级限制（显式写工具/写型 shell），真正需要隔离时仍使用 DSH 的 sandbox/approval。未知工具与任意 shell 语义不会被完整分析。
 
-## 安装
+## 安装与启用
 
-- 安装：用 `plugin_manager` 的 `install_bundle`，target 指向包含本 `package.json` 的目录绝对路径。
-- 用 `plugin_manager` 的 `install_bundle` 安装，target 指向该目录的绝对路径。
-- 插件由“开发者模式”preset 启用；`/gate-init` 初始化项目 notes、AGENTS.md、`verify-notes`、CI、git 仓库与基础 `.gitignore`。
-- planning 使用插件内置的 `gate-write-agent-notes`。`/gate-init` 创建 `.agents/notes/` 的四个 lifecycle 根、AGENTS.md managed block、`.agents/gate/verify-notes.mjs`、`.agents/gate/ci/`，在 `package.json` 确保 `verify-notes` 脚本，生成 `.github/workflows/verify-notes.yml`，并在非 git 工作区执行 `git init`、在 `.gitignore` 缺失时写入基础忽略项（已有文件不覆盖）。
+- 插件通过 `plugin_manager` 的 `install_bundle` 安装，target 指向本包 `package.json` 所在目录的绝对路径。
+- 安装前必须已生成 `lib/index.js`；构建、类型检查和测试命令由仓库根文档负责，见根 [`README.md`](../../README.md)。
+- 安装/升级后重启 DSH，使 bundle 从 `lib/index.js` 加载。
+- 插件由“开发者模式”preset 启用。启用后先执行 `/gate-init`。
+
+`/gate-init` 会：
+
+- 创建 `.agents/notes/` 的 `proposed/`、`implemented/`、`rejected/`、`archived/` 根；
+- 创建/更新 `AGENTS.md` managed block；
+- 生成 `.agents/gate/verify-notes.mjs`、`.agents/gate/ci/` 和 `.github/workflows/verify-notes.yml`；
+- 在项目 `package.json` 中确保 `verify-notes` 脚本；
+- 在非 git 工作区执行 `git init`，在 `.gitignore` 缺失时写入基础忽略项；已有 `.gitignore` 不覆盖。
+
+## 工作阶段与节点
+
+`phase` 是当前工作阶段，`node` 是阶段内的具体步骤。`discuss` 之外由命令或 `gate_start_phase` 进入。
+
+| phase / node | 用途 | 主代理/worker 与技能 |
+|---|---|---|
+| `discuss` | 理解需求、讨论方案、确认授权 | root；不派 worker |
+| `orchestrating/plan` | 把工作项整理成规划工件 | planning worker；`gate-planning` + `gate-write-agent-notes` |
+| `orchestrating/plan-review` | Plan Review 三轴评审 | review worker；`gate-plan-review` |
+| `orchestrating/plan-revise` | 按 findings 修计划 | planning worker；`gate-planning` |
+| `orchestrating/implement` | 按已确认计划实施 | implement worker；`gate-implement` |
+| `orchestrating/code-review` | 实现 review（Standards/Spec） | review worker；`gate-code-review` |
+| `orchestrating/implement-revise` | 按 review findings 修正 | implement worker；`gate-implement` |
+| `orchestrating/verify` | 最终验收与证据绑定 | verify worker；`gate-verify` |
+| `orchestrating/note-lifecycle` | 把 proposed Note 转 implemented、跑 notes 校验 | root；`gate-write-agent-notes` lifecycle 工具 |
+| `orchestrating/fix-bug` | 修复已授权缺陷并复核 | fix worker + review worker；`gate-fix-bug` + `gate-code-review` |
+| `reviewing/code-review-standalone` | 单独只读 code review | review worker；`gate-code-review` |
+| `reviewing/proposal-review` | 单独提案评审 | review worker；`gate-plan-review` |
+| `reviewing/verify-standalone` | 单独只读验收 | verify worker；`gate-user-verify` |
+| `docs` | 文档治理 | root；不调用 gate 技能 |
+| `blocked` | 冻结写入/派 worker，等待用户决定 | root；`/gate-resume` 或 `/gate-return-discuss` |
+| `complete` | 工作完成 | root；可重新进入 plan/implement |
+
+进入阶段不等于执行。主代理按当前 procedure 加载技能、派 worker，再用 `gate_record` 推进节点。
 
 ## 命令
 
 | 命令 | 参数 | 作用 |
 |---|---|---|
-| `/gate-init` | 无 | 初始化 notes 根、AGENTS.md、`verify-notes`、`.github/workflows/verify-notes.yml`、git 仓库与基础 `.gitignore`，保持 `discuss` |
-| `/gate-enter-plan [简单需求]` | 可选 | 进入 `orchestrating/plan`；用户简述随 follow-up 交给 planning |
-| `/gate-enter-implement [简单说明]` | 可选 | 进入 `orchestrating/implement`；复用已通过 planning 的 task，或直接用简述作为当前事项 |
+| `/gate-init` | 无 | 初始化 notes、AGENTS.md、`verify-notes`、CI、git 与基础 `.gitignore`，保持 `discuss` |
+| `/gate-enter-plan [简单需求]` | 可选 | 进入 `orchestrating/plan` |
+| `/gate-enter-implement [简单说明]` | 可选 | 进入 `orchestrating/implement`；复用已通过的 task，或直接用简述 |
 | `/gate-docs` | 无 | 文档治理，不调用技能 |
-| `/gate-implement-review [范围]` | 可选 | 单独只读 code review，只输出 findings；无参数时按上下文确定范围 |
-| `/gate-code-verify [范围]` | 可选 | 单独只读验收；子代理使用 gate-user-verify，主 agent 不加载 |
-| `/gate-fix-bug [缺陷简述]` | 可选 | 派 fix worker 使用 gate-fix-bug 修复已授权实现缺陷，完成后回 discuss |
-| `/gate-propose-review [提案]` | 可选 | 单独提案评审，走 gate-plan-review 三轴 |
+| `/gate-implement-review [范围]` | 可选 | 单独只读 code review，只输出 findings |
+| `/gate-code-verify [范围]` | 可选 | 单独只读验收；子代理使用 `gate-user-verify` |
+| `/gate-fix-bug [缺陷简述]` | 可选 | 派 fix worker 修复已授权缺陷，完成后回 discuss |
+| `/gate-propose-review [提案]` | 可选 | 单独提案评审，走 `gate-plan-review` 三轴 |
 | `/gate-note-verify` | 无 | 只读检查 notes tree/format/lifecycle/archived |
 | `/gate-note-archive <note> [--superseded-by <new>]` | 必需 Note 路径 | 归档 implemented Note，写 Archived、移动、封印、报告入站链接 |
-| `/gate-note-board [输出路径] [标题]` | 可选 | 生成决策看板 `board.html`，连接本地 notes 目录 |
-| `/gate-note-seal` | 无 | 只给 `archived/` 中已有 Note 补写 `manifest.json` 的 SHA-256 封印；不归档、不改 Note 内容 |
-| `/gate-block [原因]` | 可选 | 手动暂停：保留当前节点；手动 block 后用 `/gate-resume` 回原节点 |
-| `/gate-resume` | 无 | 解冻 block：回到 block 前的节点；轮次耗尽回 discuss |
-| `/gate-return-discuss` | 无 | 用户手动回到 discuss |
-| `/gate-status` | 无 | 只读状态；模型工具 `gate_status` 另带当前 procedure，worker 调用不带 root procedure |
+| `/gate-note-board [输出路径] [标题]` | 可选 | 生成决策看板 `board.html` |
+| `/gate-note-seal` | 无 | 只给 `archived/` 中已有 Note 补写 `manifest.json` 的 SHA-256 封印 |
+| `/gate-block [原因]` | 可选 | 手动暂停，保留当前节点 |
+| `/gate-resume` | 无 | 解冻 blocked，回到 block 前的节点；轮次耗尽回 discuss |
+| `/gate-return-discuss` | 无 | 回到 discuss |
+| `/gate-status` | 无 | 只读显示当前 phase/node 与 procedure |
 
-只有**启动或继续编排**的命令在一次 handler 内写状态并立即 `agent.followup`：`/gate-enter-plan`、`/gate-enter-implement`、`/gate-docs`、`/gate-implement-review`、`/gate-code-verify`、`/gate-propose-review`，以及回到 active phase 的 `/gate-resume`。`/gate-init` 也 follow-up 一次，用于首次初始化反馈。消息携带 `rawInput`、当前 phase、命令名和当前 procedure（首行是 `当前 phase/node`），source 是 `gate-command`。`/gate-block`、`/gate-return-discuss` 只改状态，`/gate-status` 只读，都不 follow-up；这些命令之后由 `gate_status`/guard 提供当前 procedure 或拒绝越权动作。首页提交命令由宿主创建 session；命令本身不创建 session。
+离开 discuss 不要求用户输入 slash command：用户在对话或 `ask_user_question` 中明确授权后，主代理可调用 `gate_start_phase({node:'plan'|'implement', brief})`。
 
-进入阶段不等于执行。主代理派发 worker，再用 `gate_record` 推进节点。
+## 技能
 
-root `gate:protocol` 是静态阶段方法论，覆盖 discuss / plan / implement / note-lifecycle / fix-bug / docs / reviewing-* / blocked / complete，字节不随 phase/node 变化；worker prompt 仍按 node 渲染。当前 phase/node 的 procedure、工具字段、方法加载和轮次由 `gate_status`、`gate_record`、`gate_start_phase` 或命令 follow-up 返回；主代理按当前 procedure 的 method 加载技能。
-
-离开 discuss 不要求用户输入 slash command：用户在对话或 `ask_user_question` 中明确授权后，主 agent 可调用 `gate_start_phase({node:'plan'|'implement', brief})` 进入阶段。`/gate-enter-plan` / `/gate-enter-implement` 仍是用户直接进入的入口。
-
-Verify PASS 后进入 `note-lifecycle`，完成后回 discuss，不停留在 complete。gate 不自动 `git add -A`/`git commit`；完成 note-lifecycle 后建议由用户/主 agent 提交本次实现与 Note：
-
-1. `gate_note_finalize` 把 proposed Note 移到 `implemented/` 并更新头块；
-2. `gate_note_verify` 跑四条校验并在通过后设置 `noteVerified`；
-3. `gate_record({node:'note-lifecycle'})` 完成。
-
-`mechanical:<说明>` 工作项跳过；`archived/manifest.json` 的封印由用户执行 `/gate-note-seal`，模型不自动写。
-
-planning worker 用 `gate_note_write` 写 `.agents/notes/proposed`；原地同步既有 implemented Note 时路径写 `implemented/<class>/...`；通用 `write`/`edit`/`apply_patch`/shell 在 planning 被 guard/restrict 拒绝。
+| 技能 | 使用方 | 作用 |
+|---|---|---|
+| `gate-planning` | planning worker | 生成/更新规划 Note，组织工作项、验收和设计 |
+| `gate-plan-review` | plan/proposal review worker | Standards/Spec/Architecture 三轴评审 |
+| `gate-implement` | implement/fix worker | 按计划实施并返回改动/验证结果 |
+| `gate-code-review` | code review worker | 对实现做 Standards/Spec 两轴 review |
+| `gate-verify` | verify worker | 最终验收、证据收集与汇报 |
+| `gate-user-verify` | standalone verify worker | 独立只读验收 |
+| `gate-fix-bug` | fix worker | 已授权缺陷修复流程 |
+| `gate-write-agent-notes` | planning worker / root note lifecycle | Note 检索、格式、finalize/verify |
 
 ## 典型用法
 
@@ -58,7 +88,7 @@ planning worker 用 `gate_note_write` 写 `.agents/notes/proposed`；原地同�
 /gate-init
 ```
 
-从 `discuss` 开始，不进入 planning/implement。同时生成 `.agents/gate/ci/` 下的校验脚本副本和 `.github/workflows/verify-notes.yml`；CI 使用这些项目内副本，不依赖插件安装路径。若当前不在 git 工作区，执行 `git init`；`.gitignore` 缺失时写入基础忽略项，已有文件保持原样。
+从 `discuss` 开始，不进入 planning/implement。
 
 ### Planning
 
@@ -66,19 +96,18 @@ planning worker 用 `gate_note_write` 写 `.agents/notes/proposed`；原地同�
 /gate-enter-plan
 ```
 
-主代理按注入协议派 `gate-planning`，创建/更新 proposed Agent Note。worker 完成后：
+主代理派 `gate-planning` worker，创建/更新 proposed Agent Note。worker 完成后：
 
 ```text
-gate_record({ node: 'plan', task: 'gate-test', workerSessionIds: ['<child-session-id>'] })
+gate_record({
+  node: 'plan',
+  task: '工作项简述',
+  noteDecision: 'new' | 'update' | 'in-place' | 'mechanical',
+  notePaths: [{ path: '.agents/notes/proposed/feature/...', class: 'feature', lifecycle: 'proposed' }]
+})
 ```
 
-`task` 可以由 planning 产出，也可以来自 `/gate-enter-implement` 的用户简述；planning 的 task 可以是标题或 `mechanical:<说明>`。随后派 `gate-plan-review`：
-
-```text
-gate_record({ node: 'plan-review', findings, reviewAxes, workerSessionIds, requiresDiscussion })
-```
-
-findings 空 → 回 discuss，`planReady=true`；需要用户决定 → 进入 `blocked`，等待 `/gate-resume`。
+进入 `plan-review`，由 review worker 做三轴评审；findings 交回 `plan-revise`，直到通过后回 `discuss`，`planReady=true`。
 
 ### Implementation
 
@@ -86,39 +115,31 @@ findings 空 → 回 discuss，`planReady=true`；需要用户决定 → 进入 
 /gate-enter-implement
 ```
 
-前提：已有 task 或用户给出一句简述，且没有耗尽 review 轮次；`planReady` 不是硬前置。
+主代理派 `gate-implement` worker 实施；完成后 `gate_record({node:'implement', workerSessionIds})` 进入 `code-review`。review 通过后进入 `verify`；verify PASS 后进入 `note-lifecycle`。
 
-主代理派 `gate-implement`，然后两轴 review、verify：
+Note lifecycle：
 
-```text
-gate_record({ node: 'implement', workerSessionIds: ['<child-session-id>'] })
-gate_record({ node: 'code-review', findings, reviewAxes, workerSessionIds })
-gate_record({ node: 'verify', verification, workerSessionIds })
-```
+1. `gate_note_finalize`：把 proposed Note 移到 `implemented/`，更新头块；
+2. `gate_note_verify`：跑 notes tree/format/lifecycle/archived 校验，通过后设置 `noteVerified`；
+3. `gate_record({node:'note-lifecycle'})`：完成并回 discuss。
 
-有已通过 planning 的 task 时，简述作为实施约束；没有规划时，简述直接作为工作项进入 implement。命令不要求用户写工作项格式，也不要求 `mechanical:` 前缀。
-
-直接 implement 时由主 agent 按 `gate-write-agent-notes` 判断改动性质：机械改动用 `gate_record({node:'implement', noteDecision:'mechanical'})` 标记并跳过 lifecycle；非机械改动先补 Note 或带上 `notePaths`。
+gate 不自动 `git add`/`git commit`；完成 note-lifecycle 后由用户或主代理决定是否提交。
 
 ### 单独 code review
 
 ```text
-/gate-implement-review src/
+/gate-implement-review [范围]
 ```
 
-- 只读；不进入 implement；不修复；不 verify；只输出 findings。
-- 结束后 `gate_record({ node: 'code-review-standalone', findings, reviewAxes, workerSessionIds })`，回到 discuss。
+只读 review，不修改被评审对象；findings 直接输出。
 
 ### 单独验收
 
 ```text
-/gate-code-verify
+/gate-code-verify [范围]
 ```
 
-- 只读；主 agent 不加载 `gate-user-verify`，只派子代理。
-- 子代理按 `gate-user-verify` 执行验收并按 Step 6 汇报；可运行测试/命令作为证据，但不得修改测试、产品代码、需求或设计，也不要自行提交。主 agent 汇总后输出给用户。
-- PASS 后 `gate_record({ node: 'verify-standalone', verification, workerSessionIds })` 回 discuss；gate 不自动提交，提交由用户/主 agent 决定。
-- 不进入 note-lifecycle；这是独立验收，不替代 implement 流程的最终 Verify。
+主代理派只读 verify worker，使用 `gate-user-verify`；PASS 后 `gate_record({node:'verify-standalone', verification, workerSessionIds})` 回 discuss。
 
 ### 缺陷修复
 
@@ -126,57 +147,27 @@ gate_record({ node: 'verify', verification, workerSessionIds })
 /gate-fix-bug 修复空指针异常
 ```
 
-- 主 agent 读取 `gate-fix-bug`，按该技能的 `assets/worker-briefs/gate-fix-bug.md` 派 fix worker 执行 Process 1-9。
-- 修复完成后，主 agent 加载 `gate-code-review` 提炼评审规则，按 `gate-fix-bug` 技能的 `assets/worker-briefs/fix-bug-review.md` 另派独立 review worker 只报 findings；findings 交回 fix worker 修正。
-- 完成后 `gate_record({ node: 'fix-bug', workerSessionIds })`，workerSessionIds 包含 fix 和 review worker；gate 不自动提交，回 discuss 后由用户/主 agent 决定提交。
+主代理派 fix worker 执行修复，再派独立 review worker 复核；完成后 `gate_record({node:'fix-bug', workerSessionIds})`。
 
 ### 提案评审
 
 ```text
-/gate-propose-review
+/gate-propose-review 某个提案
 ```
 
-- 只读；主 agent 加载 `gate-plan-review`，读取该技能 `assets/worker-briefs/plan-review.md` 写 review 任务，覆盖 Standards、Spec、Architecture 三轴。
-- 主 agent 按规模决定一个或多个 review worker。
-- 结束后 `gate_record({ node: 'proposal-review', findings, reviewAxes, workerSessionIds })`，回到 discuss。
-- 不自动 plan-revise；findings 由用户决定后续。
+review worker 使用 `gate-plan-review` 做 Standards/Spec/Architecture 三轴评审，不改提案。
 
 ### 归档与封印
 
-`/gate-note-verify` 只读检查现有 Note：
-
 ```text
-tree / format / lifecycle / archived
-```
-
-`/gate-note-archive` 才是归档：
-
-```text
-/gate-note-archive implemented/<class>/<old>.md --superseded-by implemented/<class>/<new>.md
-```
-
-它会：
-
-- 给旧 Note 插入 `Archived: YYYY-MM-DD`；
-- 移到 `archived/<class>/`；
-- 写入 `archived/manifest.json` 的 SHA-256 封印；
-- 报告仍指向旧 Note 的入站链接；
-- `--superseded-by` 只在**新 Note** 里补互链，不改归档正文。
-
-什么时候归档，按原始 `write-agent-notes` 规则：
-
-- 旧方案被新方案**完全取代**，但旧篇仍有独立参考价值（否定性保证、所有权边界、重新引入条件）→ 吸收旧篇独有理由后归档；
-- 一次性设计、已废弃平台的窄适配、已闭环的简单修补 → 可归档；
-- 旧篇被完全吸收、没有独立价值 → 删除，不归档；
-- 部分取代 → 两篇都保留并互链，不归档。
-
-`/gate-note-seal` 不是归档入口：
-
-```text
+/gate-note-archive implemented/architecture/2026-11-10-example.md
+/gate-note-archive implemented/architecture/old.md --superseded-by implemented/architecture/new.md
 /gate-note-seal
 ```
 
-只给 `archived/` 中**已有但缺 manifest/封印**的 Note 补 SHA-256；通常在 verify 报 `manifest.json missing` 或历史导入时执行一次。正常用 `/gate-note-archive` 时，归档脚本已经写入封印，不需要再 seal。
+- 归档由用户命令触发；模型不自动移动 Note。
+- `archived/manifest.json` 的封印只由 `/gate-note-seal` 写入。
+- 归档后报告被新 Note 取代的入站链接。
 
 ### 决策看板
 
@@ -184,9 +175,7 @@ tree / format / lifecycle / archived
 /gate-note-board [输出路径] [标题]
 ```
 
-默认生成 `board.html`（约 69KB 轻量版）。用浏览器打开后点击“连接本地目录”选择 `.agents/notes`，之后新增/修改 Note 会自动热刷新。
-
-不指定标题时使用项目目录名加“决策看板”。
+生成连接本地 notes 目录的轻量 `board.html`，不改变 Note。
 
 ### 文档治理
 
@@ -194,50 +183,35 @@ tree / format / lifecycle / archived
 /gate-docs
 ```
 
-只做文档治理，不调用技能；范围由模型按项目实际文档需要判断。完成后：
-
-```text
-gate_record({ node: 'docs' })
-```
-
-回到 discuss，不需要用户再执行 slash command。
+进入 `docs` phase，不调用 gate 技能；由主代理按项目文档规范处理。
 
 ### 暂停、恢复与讨论
 
-`/gate-block [原因]` 是**手动暂停**，不是沟通模式：
-
-- 保留当前 `phase/node`；
-- 冻结显式写工具/写型 shell 和 worker 派发（进程级，不是 OS 级）；只读 shell 仍可用；
-- 会话不关闭，仍然可以正常聊天、提问、确认方案；
-- 命令本身不 follow-up，agent 不会自动继续。
-
-暂停后的选择：
-
-| 目的 | 操作 |
-|---|---|
-| 同一事项，确认后继续原节点 | `/gate-resume` |
-| 方案变了，回讨论重新开始 | `/gate-return-discuss` |
-| 讨论完直接实施 | `/gate-return-discuss` → `/gate-enter-implement <一句说明>` |
-| 需要重新规划 | `/gate-return-discuss` → `/gate-enter-plan <一句需求>` |
-
-`requiresDiscussion` 产生的自动 block 与手动 block 一样保存当时的 `phase/node`，`/gate-resume` 回到原节点继续；只有 review 轮次耗尽产生的 block 不保存原节点，`/gate-resume` 回到 discuss。`gate-status` 会显示“解冻后：…”。
-
 ```text
-/gate-block 等作者确认方案
-（继续对话确认）
-/gate-resume              # 同节点继续
-# 或
+/gate-block 等待产品决定
+/gate-resume
 /gate-return-discuss
-/gate-enter-implement 按确认后的方案改
+/gate-status
 ```
 
-blocked 时显式写工具/写型 shell 被拒绝，只读 shell 可用；这是 guard/restrict 的进程级冻结，不是 sandbox 级。review 轮次耗尽进入 blocked 后 `exhausted` 保留，不能靠 `/gate-resume` 绕过，需要重新 `/gate-enter-plan`。
+- `/gate-block`：保留当前节点，冻结写入与 worker 派发，对话仍可继续。
+- `/gate-resume`：回到 block 前的节点；review 轮次耗尽时回 discuss。
+- `/gate-return-discuss`：放弃当前节点，回 discuss。
+- `/gate-status`：只读查看当前 phase/node 和 procedure。
 
-## gate_record
+## 工具
 
-只允许 root agent 调用。child worker 调用返回 `root-only`。
+### gate_start_phase
 
-返回值带 transition 后 state 的当前 procedure（首行 `当前 phase/node`）；失败返回当前 state 的 procedure，不返回未到达的下一 phase procedure。`gate_start_phase` 同理。
+只允许 root 调用，在用户已授权时从 `discuss`/`complete` 进入 `plan` 或 `implement`：
+
+```text
+gate_start_phase({ node: 'plan' | 'implement', brief })
+```
+
+### gate_record
+
+只允许 root 调用。它记录节点结果、推进状态，并返回 transition 后的当前 procedure。
 
 ```text
 gate_record({
@@ -254,23 +228,24 @@ gate_record({
 
 - `node`：`plan`、`plan-review`、`proposal-review`、`plan-revise`、`implement`、`code-review`、`implement-revise`、`verify`、`verify-standalone`、`code-review-standalone`、`fix-bug`、`note-lifecycle`、`docs`。
 - `plan` 必须带 `task`。
-- worker 节点必须带 `workerSessionIds`；id 必须是当前 root 的 subagent tree child 且已 settled，否则拒绝推进。
-- `plan-review` 与 `proposal-review` 必须带 `reviewAxes.standards`、`reviewAxes.spec`、`reviewAxes.architecture` 三轴；`code-review`/`code-review-standalone` 必须带 `standards` 与 `spec` 两轴；缺轴不能通过 review。
-- 每个轴的 `reviewAxes.<axis>.findings` 必须是数组；`workerSessionIds` 与实际派发的 review worker 数量一致，由主 agent 按规模决定。
-- `requiresDiscussion=true`：进入 `blocked`，`blockReason=needs-user-decision`；用户 `/gate-resume` 后继续 discuss。
-- review 达到 `reviewLimit` 仍有 findings：进入 blocked，设置 `exhausted.plan/code`；不能靠重新 `/gate-enter-implement` 绕过。
+- worker 节点必须带当前 root 的、已 settled 的 child `workerSessionIds`。
+- `plan-review`/`proposal-review` 需要 Standards/Spec/Architecture 三轴；`code-review`/`code-review-standalone` 需要 Standards/Spec 两轴。
+- `requiresDiscussion=true` 进入 blocked，等待用户决定。
+- review 达到 `reviewLimit` 仍有 findings 时 blocked，不能靠重新进入 implement 绕过。
 
-## gate_status
+### gate_status
 
-只读，root 和 worker 可调用；worker 读所属 root 的状态，但**不返回 root procedure**（root procedure 只给 root）。
+只读，root 和 worker 可调用。root 返回当前 procedure 与状态；worker 只返回状态，不返回 root procedure。
 
 ```text
 gate_status()
 ```
 
-root 返回当前 procedure（首行 `当前 phase/node`、method、procedure 正文）加 phase/node/task/work/blockReason/planReady/rounds，以及按条件出现的 notes/exhausted/verify 行；blocked 时还有“解冻后”行。worker 只返回状态行。失败返回 `root-unresolved`（worker 的 root 不可解析）或 `state-unavailable`（工作区不可解析）。
+### Note 工具
 
-主代理在 compaction 后、失败恢复时，或没有拿到最新 procedure 时调用它；`gate_record`、`gate_start_phase` 和命令 follow-up 已主动携带当前/下一 procedure。`gate_record` 成功返回 transition 后新 state 的 procedure，失败返回当前 state 的 procedure；`gate_start_phase` 同理。
+- `gate_note_write`：planning worker 写 proposed Note，或原地更新 implemented Note；通用 `write`/`edit`/`apply_patch`/shell 在 planning 被拒绝。
+- `gate_note_verify`：root 在 note-lifecycle 中跑 notes 校验。
+- `gate_note_finalize`：root 把 proposed Note 移到 implemented 并更新头块。
 
 ## Verify 证据
 
@@ -286,68 +261,25 @@ root 返回当前 procedure（首行 `当前 phase/node`、method、procedure �
 ```
 
 - `commands`、`evidence`、`toolResults` 不能为空；
-- evidence 必须是 gate workspace 内的普通文件；
+- `evidence` 必须是 gate workspace 内的普通文件；
 - `toolResults` 必须是 verify worker session log 中真实 `tool/result` 的 `call_...` id；
-- gate 记录每个 evidence 的 `path`、`size`、`sha256`；
-- 绑定成功的 verify 标记 `selfReported:false`、`executionBound:true`；`commands`/`evidence` 仍是主代理转述，不能当成完整独立执行证明。
+- gate 记录 evidence 的 `path`、`size`、`sha256`；
+- 绑定成功后 verify 标记 `selfReported:false`、`executionBound:true`；
+- `commands`/`evidence` 是主代理转述，不是完整独立执行证明。
 
 ## 配置
 
-## 迁移
+插件 Config：
 
-预设启用即生效，没有项目 marker。生产状态由 session projection 从 `gate_record`/`/gate-*` 日志重建，不写 `.agents/state/gate/`。
+```json
+{ "reviewLimit": 5 }
+```
 
-迁移步骤：
+`reviewLimit` 是每个 review 节点的最大轮次；默认 5，范围 1–20。达到上限仍有 findings 时进入 blocked。
 
-1. profile 依赖移除 `@dsh-nove/implement-gate`，并删除 `@dsh-nove/gate` 的 link；不要保留旧 gate 的 bundle。
-2. 安装目标改为 `packages/gate`；安装/升级后重启 DSH 使 bundle 生效。
-3. 删除旧 `.agents/implement-gate.json`、`.agents/state/implement-gate`；只保留一个新的 gate 实现。
-4. 工具面仍有 `implement_gate` 时，先移除旧实现。
-5. 回滚：`plugin_manager remove_bundle dsh-gate-agent`，恢复 profile 依赖/lockfile 到迁移前状态；回滚时不要同时启用旧 gate。
+## 使用边界
 
-方法论/procedure 分层的回滚：恢复上一版 per-variant `gate:protocol` 与命令 follow-up 实现；不做双轨运行。
-
-## 已知限制
-
-- 写门禁是流程约束，不是完整安全边界；`apply_patch` 已覆盖，其他未列出的写工具不会被识别。
-- shell 只识别显式写动词、重定向和部分管道；`node -e`、`python -c`、构建脚本等仍可能写盘。blocked 的进程级冻结同样受此限制。
-- verify 的 `toolResults` 会用 `sessionQuery.readSession` 在 worker session log 中绑定到真实 `tool/result` callId；`commands`/`evidence` 仍是主代理转述，不能当成完整独立执行证明。
-- `ctx.tools.restrict` 只掩全局工具；scoped 写工具仍可能出现在工具面，硬拒绝由 `ctx.tools.guard` 保证。
-- 旧 gate 版本已 append `sandbox/mode` 的会话（planning/implement workspace-write、review/verify read-only）升级后不会被新 gate 恢复；DSH 继续 replay 最后一条 mode。用新会话或由用户重新选择 sandbox mode；gate 不再管理 sandbox。
-- root 可在 code-review/verify 写文件；gate 不再自动 commit，提交由用户/主 agent 决定。修改被评审实现后必须重跑 review/verify；gate 不区分“已审阅/未审阅”文件。
-- 旧 gate 迁移仍属后续 B 工作项；session projection、guard/restrict、worker tree 证据与 review axes 已在 T1/T2/T3 实现。
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- gate 是流程门禁，不是 OS 安全边界；未知工具和任意 shell 语义不会被完整分析。
+- blocked 的写冻结是 guard/restrict 的进程级限制；需要强隔离时使用 DSH sandbox/approval。
+- root 在 code-review/verify 可写文件；修改被评审实现后必须重跑 review/verify。
+- 旧会话不会自动恢复 gate 管理的 sandbox mode；gate 不再 append `sandbox/mode`。

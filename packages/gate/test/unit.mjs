@@ -3,8 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { apply, Config, DISCUSS_ORCHESTRATION, GATE_RECORD_NODES, NODE_METHODS, WORKER_NODES } from '../index.js'
-import { loadState, saveState, defaultState } from '../src/state.js'
+import { apply, Config, DISCUSS_ORCHESTRATION, GATE_RECORD_NODES, NODE_METHODS, WORKER_NODES, loadState, saveState, defaultState } from '../lib/index.js'
 
 let failures = 0
 function check(name, condition, detail) {

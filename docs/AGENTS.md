@@ -4,7 +4,7 @@
 
 ## 文档分层
 
-仓库文档分四层：入口与规则（根 `README.md`、`AGENTS.md`、`.agents/GATES.md`、本文件；插件入口在 `packages/gate/README.md`）、方法与技能（`packages/gate/skills/` 与 `.agents/skills/`）、运行时代码（`packages/gate/src/`、`packages/gate/index.js` 及其注释）、长期记录（`.agents/notes/` 的 Agent Note）。每层只写自己的主题，其他位置链接到属主，不复制事实。
+仓库文档分四层：入口与规则（根 `README.md`、`AGENTS.md`、`.agents/GATES.md`、本文件；插件入口在 `packages/gate/README.md`）、方法与技能（`packages/gate/skills/` 与 `.agents/skills/`）、运行时代码（`packages/gate/src/` 源码与 `packages/gate/lib/index.js` 构建产物及其注释）、长期记录（`.agents/notes/` 的 Agent Note）。每层只写自己的主题，其他位置链接到属主，不复制事实。
 
 ## 现有文档属主
 
@@ -18,7 +18,7 @@
 | `.agents/skills/` | 项目级技能实现；技能正文拥有各自方法 |
 | `packages/gate/skills/<name>/SKILL.md` | 插件专项技能：gate-planning、gate-plan-review、gate-implement、gate-code-review、gate-verify |
 | `packages/gate/skills/gate-write-agent-notes/` | 插件内置 write-agent-notes 方法、引用与脚本；gate 默认使用，项目不需要安装同名技能 |
-| `packages/gate/src/`、`packages/gate/index.js` | 插件运行时：Gate 状态、分类与写权限 |
+| `packages/gate/src/`、`packages/gate/lib/index.js` | 插件运行时：TypeScript 源码、构建入口，Gate 状态、分类与写权限 |
 | `packages/gate/cordis.patch.yml` | 插件 bundle 装配 |
 | `docs/AGENTS.md` | 本入口：文档属主与新工件位置 |
 | `docs/agents/domain.md` | 领域文档消费规则：术语表与决策冲突 |
@@ -54,6 +54,6 @@
 
 ## 检查
 
-Agent Note 的目录、格式、正文骨架与本地链接由 `write-agent-notes` Skill 的校验命令检查，入口为管理根的 `npm run verify-notes`。机械检查通过不代替对事实归属与内容真实性的审阅。
+Agent Note 的目录、格式、正文骨架与本地链接由 `write-agent-notes` Skill 的校验命令检查，入口为管理根的 `pnpm run verify-notes`。机械检查通过不代替对事实归属与内容真实性的审阅。
 
 
