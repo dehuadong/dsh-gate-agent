@@ -12,8 +12,9 @@
 - 使用文档：[`packages/gate/README.md`](packages/gate/README.md)
 - Bundle patch：[`packages/gate/cordis.patch.yml`](packages/gate/cordis.patch.yml)
 - 开发/发布前构建：`pnpm install && pnpm build`；`lib/` 是 gitignored 的构建产物。从 npm 安装已发布版本不需要本地 build。
-- 安装：`plugin_manager` 的 `install_bundle`，target 使用 npm 版本 `dsh-gate-agent@0.1.1`（或当前版本）；**不要指向本地 `packages/gate` 路径**，path/link 安装卸载时可能删除源目录。安装/升级后重启 DSH。
-- 插件由“开发者模式”preset 启用；安装后先执行 `/gate-init`。
+- **生产安装**：`install_bundle` target 使用 npm 版本 `dsh-gate-agent@0.1.1`（或当前版本）。
+- **开发安装**：`npm pack` 生成 `.tgz`，把绝对路径交给 `install_bundle`；或 link 一个可丢弃副本。**不要 link 正在开发的 `packages/gate` 源目录**：Windows junction 在卸载时可能被递归删除，连带删除源文件。
+- 安装/升级后重启 DSH；插件由“开发者模式”preset 启用，安装后先执行 `/gate-init`。
 
 ### 从旧 gate 迁移
 

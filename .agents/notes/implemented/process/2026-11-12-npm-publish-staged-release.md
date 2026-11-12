@@ -49,9 +49,9 @@ npm view dsh-gate-agent version
 
 正确做法：
 
-- 安装 target 使用 npm 版本，例如 `dsh-gate-agent@0.1.1`；
-- profile 依赖应写成 `"dsh-gate-agent": "0.1.1"`，node_modules 里是 registry 包的独立副本（pnpm store 硬链接），卸载只删除 profile 里的副本；
-- 本地开发验证不要直接 link 正在开发的源目录；需要本地包时先 `npm pack`，用 tarball 或独立副本安装；
+- **生产安装**：安装 target 使用 npm 版本，例如 `dsh-gate-agent@0.1.1`；profile 依赖写成 `"dsh-gate-agent": "0.1.1"`，node_modules 是 registry 包的独立副本（pnpm store 硬链接），卸载只删除 profile 副本。
+- **开发安装**：不要直接 link 正在开发的源目录。用 `npm pack` 生成 `.tgz`，把 tarball 绝对路径交给 `install_bundle`；或 link 一个可丢弃副本。tarball 安装也是独立副本，卸载不会删除源目录。
+- 本次修复后 profile 使用本地 tarball：`file:E:/workspace/dsh-plugin/gate/.artifacts/dsh-gate-agent-0.1.1.tgz`；源目录仍是开发目录，改代码后重新 pack/install 验证。
 - 发布 npm 不会自动替换已 link 的 profile，切换来源后要重新安装并重启 DSH。
 
 ### staged release 处理
@@ -78,7 +78,7 @@ npm view dsh-gate-agent version
 - 0.1.0 首次发布时约 5 分钟后才在 registry 可见；0.1.1 同样经历短暂传播延迟，`npm view` 最终确认 latest。
 - tarball 65 个文件、约 144.2 kB；包含 `lib/index.js`、skills、launchers、locale、icon、`cordis.patch.yml`、README。
 - `0.0.0-stage` 占位版本保留在 versions 列表，属于首次 staged publishing 的正常结果。
-- 安装事故：path/link 安装后卸载导致 `packages/gate` 源文件被删；已从 HEAD 恢复，当前 profile 改为 npm `dsh-gate-agent@0.1.1`，node_modules 为独立副本。
+- 安装事故：path/link 安装后卸载导致 `packages/gate` 源文件被删；已从 HEAD 恢复，当前 profile 改为本地 tarball `file:E:/workspace/dsh-plugin/gate/.artifacts/dsh-gate-agent-0.1.1.tgz`，node_modules 为独立副本。
 - 发布配置提交：`chore(release): enable public npm publishing`。
 
 ## Alternatives considered

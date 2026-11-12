@@ -6,9 +6,9 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 
 ## 安装与启用
 
-- 插件通过 `plugin_manager` 的 `install_bundle` 安装，target 使用 npm 版本，例如 `dsh-gate-agent@0.1.1`。
-- **不要用本地 path/link 安装**（不要把 target 指向 `E:\...\packages\gate`）。path 安装会在 profile 里生成 link；卸载 link 时可能把 workspace 源目录一起删除。本次已实际发生。
-- 本地开发验证优先使用独立 checkout 副本或 npm tarball，不要让 profile 的安装目标直接指向正在开发的源目录。
+- **生产安装**：通过 `plugin_manager` 的 `install_bundle` 使用 npm 版本，例如 `dsh-gate-agent@0.1.1`。
+- **开发安装**：使用本地 tarball，例如 `npm pack` 生成 `.tgz` 后把绝对路径交给 `install_bundle`；或 link 一个**可丢弃的副本**，不要把 profile 的安装目标指向正在开发的源目录。
+- **不要直接 link `E:\...\packages\gate`**。Windows 上 pnpm 的 `link:` 是 junction，卸载时递归删除会穿过 junction 删除源目录；本次已实际发生。其他 link 插件也有同样风险，只是未在删除路径上触发。
 - 安装/升级后重启 DSH，使 bundle 从 `lib/index.js` 加载。
 - 插件由“开发者模式”preset 启用。启用后先执行 `/gate-init`。
 
