@@ -68,6 +68,7 @@ DSH 开发文档参考：`deepseek-harness/docs`
 - **开发安装用 link**：先在仓库根执行 `pnpm --filter dsh-gate-agent build`，确认 `packages/gate/lib/index.js` 存在；再用 `plugin_manager` 的 `install_bundle`，target 指向本地包目录绝对路径，例如 `E:\workspace\dsh-plugin\gate\packages\gate`。profile 记录为 `link:E:/workspace/dsh-plugin/gate/packages/gate`，node_modules 里是指向源码目录的 Junction。
 - 安装结果以 `application: applied` 且 `warnings: []` 为准；`stage: enable` / `changed: true` 只说明做了改动。安装/升级后重启 DSH，加载的是 `lib/index.js`，不是 `src/`。
 - 卸载用 `plugin_manager` 的 `remove_bundle`（target `dsh-gate-agent`）或 `pnpm remove`；标准卸载只改 profile 的 bundles、依赖和 Junction。不要手动递归删除 profile 的 `node_modules`：Windows 上 link 是 junction，递归删除可能穿过 junction 删除源目录。
+- **不要在同一个 profile 里把 link 直接切换成 npm 包**：后续 `pnpm add`/`pnpm install` 清理旧 link 时会递归删除 junction，穿透删掉源目录。生产/npm 验证用独立 profile；若必须切换，先 `remove_bundle`，确认 profile 依赖和 `node_modules/dsh-gate-agent` 都不存在，再安装 npm，不要用一次 install 覆盖。
 - 本仓库实测：对主源码和一次性副本执行 `remove_bundle` 后，源目录均保留，pnpm 只移除 link。若源目录仍被删除，先检查 `.dsh/profiles/desktop/.plugin-manager/logs/operation-*/pnpm.log` 和具体卸载动作，不要先改安装方式。
 - 源码目录若被误删，先恢复：
   ```text

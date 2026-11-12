@@ -52,6 +52,24 @@ npm view dsh-gate-agent version
 - 发布 npm 不会自动替换已 link 的 profile，切换来源后要重新安装并重启 DSH。
 - 如果源目录再次被清空，先停用递归删除操作，从 Git 恢复；不要把 link 安装本身当作根因。
 
+### link 切换 npm 会删源目录（已复现）
+
+在同一 profile 里先把包 `link:` 到源码，再直接 `pnpm add dsh-gate-agent@0.1.2`，pnpm 在 reconcile 时会递归删除旧的 `node_modules/dsh-gate-agent` Junction，删除会穿透到 link target，源码目录随之被清空。
+
+隔离复现：
+
+```text
+pnpm add E:\...\target        # profile 中生成 Junction
+pnpm add dsh-gate-agent@0.1.2 # 替换/清理旧 link
+# target/package.json -> 不存在
+```
+
+单独 `pnpm remove dsh-gate-agent` 不会删 target；危险的是 **install 时替换/清理旧 link**，不是普通卸载。因此：
+
+- 开发 profile 不要直接切到 npm 版本；npm 验证用独立 profile。
+- 必须在同一 profile 切换时：先 `remove_bundle`，确认 profile 依赖和 `node_modules/dsh-gate-agent` 都不存在，再安装 npm；不要用一次 install 覆盖。
+- 该事故不是插件代码或 `link:` 安装方式本身的问题，而是 Windows junction + pnpm 替换路径的删除语义。
+
 ### staged release 处理
 
 - npm 文档：[Staged publishing](https://docs.npmjs.com/staged-publishing/)。

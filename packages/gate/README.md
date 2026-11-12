@@ -38,6 +38,7 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 
 - `install_bundle` target 使用 npm 版本，例如 `dsh-gate-agent@0.1.2`。
 - npm 安装的是独立副本，卸载不会影响本仓库源码。
+- **不要在已有 link 的同一个 profile 上直接安装 npm 版本**：pnpm 替换/清理旧 link 时会递归删除 Junction，可能删穿到源码目录。npm 验证请用独立 profile；必须在同一 profile 切换时，先 `remove_bundle` 并确认 `node_modules/dsh-gate-agent` 已不存在，再安装 npm。
 
 ### 启用
 
