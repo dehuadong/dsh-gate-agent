@@ -8,8 +8,6 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 
 ### 开发安装（link，标准方式）
 
-与 `see-dsh-novel` 的 `docs/plugin-local-install.md` 相同：
-
 1. 在仓库根构建：
 
    ```text

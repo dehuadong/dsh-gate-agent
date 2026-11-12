@@ -65,19 +65,16 @@ DSH 开发文档参考：`deepseek-harness/docs`
 
 ## 插件安装
 
-参考同类插件的本地安装文档：`E:\see-dsh-novel\docs\plugin-local-install.md`。
-
-- **开发安装用 link**：`plugin_manager` 的 `install_bundle` target 指向本地包目录绝对路径，例如 `E:\workspace\dsh-plugin\gate\packages\gate`；profile 记录为 `link:E:/workspace/dsh-plugin/gate/packages/gate`。这是 DSH 的标准开发方式，不要用 npm 版本替代开发期的 link。
-- 安装前在仓库根 `pnpm build`，确认 `packages/gate/lib/index.js` 存在；link 加载的是该构建产物。
-- 卸载用 `plugin_manager` 的 `remove_bundle` 或 `pnpm remove`。不要手动递归删除 profile 的 `node_modules`：Windows 上 link 是 junction，递归删除可能穿过 junction 删除源目录；`pnpm remove` 实测只移除 link，保留 target。
+- **开发安装用 link**：先在仓库根执行 `pnpm --filter dsh-gate-agent build`，确认 `packages/gate/lib/index.js` 存在；再用 `plugin_manager` 的 `install_bundle`，target 指向本地包目录绝对路径，例如 `E:\workspace\dsh-plugin\gate\packages\gate`。profile 记录为 `link:E:/workspace/dsh-plugin/gate/packages/gate`，node_modules 里是指向源码目录的 Junction。
+- 安装结果以 `application: applied` 且 `warnings: []` 为准；`stage: enable` / `changed: true` 只说明做了改动。安装/升级后重启 DSH，加载的是 `lib/index.js`，不是 `src/`。
+- 卸载用 `plugin_manager` 的 `remove_bundle`（target `dsh-gate-agent`）或 `pnpm remove`；标准卸载只改 profile 的 bundles、依赖和 Junction。不要手动递归删除 profile 的 `node_modules`：Windows 上 link 是 junction，递归删除可能穿过 junction 删除源目录。
+- 本仓库实测：对主源码和一次性副本执行 `remove_bundle` 后，源目录均保留，pnpm 只移除 link。若源目录仍被删除，先检查 `.dsh/profiles/desktop/.plugin-manager/logs/operation-*/pnpm.log` 和具体卸载动作，不要先改安装方式。
 - 源码目录若被误删，先恢复：
   ```text
   git restore --source=HEAD -- packages/gate
   pnpm build
   ```
-  本次清空是一次递归删除穿过 junction 的事故，不是 link 安装本身的问题。
 - **生产安装用 npm 版本**，例如 `dsh-gate-agent@0.1.2`；npm 副本与开发 link 是两种来源，发布 npm 不会自动替换已 link 的 profile。
-- 安装/升级后重启 DSH；插件由“开发者模式”preset 启用，启用后先 `/gate-init`。
 
 ## 文档与约定
 
