@@ -106,7 +106,7 @@ B 的正式实施应在 P0 完成后开始；B-1/B-2 的关键决定可以在 P0
 
 ## Method loading
 
-主 agent 在**每次派 worker 前**加载当前节点对应的 gate 技能，不依赖之前的加载或记忆（多轮/压缩后尤其如此），把任务和提炼后的方法要求写进 subagent prompt；worker 的 system prompt 不再注入 `Skills` 或 `## Method files`，也不再要求 worker 重新加载 gate 技能。阶段映射：plan/plan-revise → `gate-planning` + `write-agent-notes`；plan-review → `gate-plan-review`；implement/implement-revise → `gate-implement`；code-review/review → `gate-code-review`；verify → `gate-verify`；discuss/docs 无技能。这样方法在主 agent 侧每次派发时刷新，worker 的多轮执行复用同一份任务上下文，避免每轮重复加载技能。code review 合并为一个 `gate-code-review` 技能，由主 agent 加载后派一个 review worker 同时产出 `standards` 与 `spec` 两轴。
+主 agent 在**首次需要进入当前节点技能时**加载对应 gate 技能；同一会话已加载且内容仍在上文时直接复用，不重复调用 skill。只有首次进入、compaction 后内容丢失、技能文件/版本变化或用户要求刷新时才重新加载；`gate_record`/`gate_status` 返回新 procedure 不触发重载。把任务和提炼后的方法要求写进 subagent prompt；worker 的 system prompt 不再注入 `Skills` 或 `## Method files`，也不再要求 worker 重新加载 gate 技能。阶段映射：plan/plan-revise → `gate-planning` + `write-agent-notes`；plan-review → `gate-plan-review`；implement/implement-revise → `gate-implement`；code-review/review → `gate-code-review`；verify → `gate-verify`；discuss/docs 无技能。详细规则见 [2026-11-12-skill-loading-prompt](../process/2026-11-12-skill-loading-prompt.md)。code review 合并为一个 `gate-code-review` 技能，由主 agent 加载后派一个 review worker 同时产出 `standards` 与 `spec` 两轴。
 
 ## Implementation Review
 

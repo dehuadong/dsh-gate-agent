@@ -17,7 +17,7 @@ export const PLAN_ORCHESTRATION = `## /gate-enter-plan 编排
 主代理派 worker；gate 不派。
 
 ## Step 1 — Planning
-主 agent 加载技能 gate-planning 和 gate-write-agent-notes；读取 gate-planning 的 SKILL.md、proposal.md 和 assets/worker-briefs/gate-enter-plan.md 写 planning 任务。
+主 agent 首次进入 planning 时加载技能 gate-planning 和 gate-write-agent-notes；若本会话已加载且内容仍在上文，直接复用，不要重复调用 skill。读取 gate-planning 的 SKILL.md、proposal.md 和 assets/worker-briefs/gate-enter-plan.md 写 planning 任务。
 若工作项要写设计节（Note 的 “## Design” / “### 设计” / 自由设计节），必须先读取 rfc.md，按其检查项收敛，并把适用检查点写进 worker prompt；mechanical 或不写设计节的工作项不强制读 rfc。
 先按 write-agent-notes §3 检索历史，再按 §4 判定归属与 class；用 gate_note_write 写 Note，路径与 class 必须一致。发现旧 implemented Note 被新决定完全取代时，记下归档候选；新 Note 尚未落地前不要归档。
 把工作项、约束和提炼后的规划方法写进 subagent prompt；planning worker 不加载 gate 技能。
@@ -25,11 +25,11 @@ export const PLAN_ORCHESTRATION = `## /gate-enter-plan 编排
 notePaths 是 [{path,class,lifecycle}] 数组；path 接受 .agents/notes/<lifecycle>/<class>/...、<lifecycle>/<class>/... 或 <class>/...，gate_record 归一为完整路径；mechanical:<说明> 用 noteDecision:'mechanical' 且 notePaths 为空。
 
 ## Step 2 — Plan Review
-主 agent 加载技能 gate-plan-review；读取该技能的 assets/worker-briefs/plan-review.md 写 review 任务，按任务规模和风险自行决定派一个或多个只读 review worker，覆盖 Standards、Spec、Architecture 三轴。
+主 agent 首次进入 plan-review 时加载技能 gate-plan-review；若本会话已加载且内容仍在上文，后续多轮 review 直接复用，不要重复调用 skill。读取该技能的 assets/worker-briefs/plan-review.md 写 review 任务，按任务规模和风险自行决定派一个或多个只读 review worker，覆盖 Standards、Spec、Architecture 三轴。
 给 worker 工作项、Note、固定点和评审方法；不要在 review worker prompt 中附带项目环境验证（package.json、Node 版本、git 状态、文件存在性、初始化 smoke 结果）。
 完成后调 gate_record({node:'plan-review',findings,reviewAxes,workerSessionIds,requiresDiscussion})。
 reviewAxes 必须包含 standards、spec、architecture 三轴。
-需要用户决定：进入 blocked，等待 /gate-resume；仍有 findings：先 gate_record 本轮 plan-review，确认 node 已变为 plan-revise，再重新加载 gate-planning，只带 findings 和 Note 路径派 revise，再 review。
+需要用户决定：进入 blocked，等待 /gate-resume；仍有 findings：先 gate_record 本轮 plan-review，确认 node 已变为 plan-revise，再复用已加载的 gate-planning，只带 findings 和 Note 路径派 revise，再 review。
 
 ## Step 3 — 回到 Discuss
 review 为空时回到 discuss，planReady=true。
@@ -39,18 +39,18 @@ export const IMPLEMENT_ORCHESTRATION = `## /gate-enter-implement 编排
 主代理派 worker；gate 不派。
 
 ## Step 1 — Implement
-主 agent 加载技能 gate-implement；读取该技能的 assets/worker-briefs/gate-enter-implement.md 写 implement 任务。采用测试优先时同时加载 gate-tdd，并把相关规则交给 implement worker。
+主 agent 首次进入 implement 时加载技能 gate-implement；若本会话已加载且内容仍在上文，直接复用，不要重复调用 skill。读取该技能的 assets/worker-briefs/gate-enter-implement.md 写 implement 任务。采用测试优先时同时加载 gate-tdd，并把相关规则交给 implement worker。
 worker 不加载 gate 技能。
 完成后调 gate_record({node:'implement', workerSessionIds})。
 
 ## Step 2 — Implementation Review
-主 agent 加载技能 gate-code-review；读取该技能的 assets/worker-briefs/gate-implement-review.md 写 review 任务，按改动规模自行决定派一个或多个只读 review worker，覆盖 Standards 与 Spec 两轴。
+主 agent 首次进入 code-review 时加载技能 gate-code-review；若本会话已加载且内容仍在上文，后续 review 轮次直接复用，不要重复调用 skill。读取该技能的 assets/worker-briefs/gate-implement-review.md 写 review 任务，按改动规模自行决定派一个或多个只读 review worker，覆盖 Standards 与 Spec 两轴。
 完成后调 gate_record({node:'code-review', findings, reviewAxes, workerSessionIds})；有 findings 时先记录，确认 node 已变为 implement-revise，再派 revise worker。
 审查要求满足后继续 Step 3，无需再次授权。
 实现中发现范围外问题、合同变化或需要重新讨论时，worker 停止并返回 receipt；主 agent 向用户说明，使用 gate_record 的 requiresDiscussion 或提示用户执行 /gate-return-discuss。不要停在 implement 里继续扩大范围。
 
 ## Step 3 — Verify
-主 agent 加载技能 gate-verify，读取该技能的 assets/worker-briefs/gate-verify.md 写 verify 任务，派 verify worker 完成最终验收。
+主 agent 首次进入 verify 时加载技能 gate-verify；若本会话已加载且内容仍在上文，直接复用，不要重复调用 skill。读取该技能的 assets/worker-briefs/gate-verify.md 写 verify 任务，派 verify worker 完成最终验收。
 完成后调 gate_record({node:'verify', verification, workerSessionIds})；verification.toolResults 必须是 verify worker session log 中真实 tool/result 的 call_... id，evidence 是 workspace 内的普通文件。
 只有最终 PASS 才完成交付；FAIL 回到 implement-revise。
 状态更新遵循项目登记的工作项与决策记录生命周期。
@@ -64,10 +64,10 @@ export const FIX_BUG_ORCHESTRATION = `## /gate-fix-bug 编排
 主 agent 读取 gate-fix-bug；主 agent 只汇总，不自行修复。
 
 ## Step 1 — Fix
-主 agent 读取 gate-fix-bug 技能的 assets/worker-briefs/gate-fix-bug.md，派 fix worker。fix worker 使用 gate-fix-bug 执行 Process 1-9：复现、回归覆盖、根因、最小修复、原复现与相关测试。完成后返回修复 receipt；不要自行完成 Step 10-12，也不要提交。
+主 agent 首次进入 fix-bug 时读取/加载 gate-fix-bug；已加载则复用，不要重复调用 skill。读取 gate-fix-bug 技能的 assets/worker-briefs/gate-fix-bug.md，派 fix worker。fix worker 使用 gate-fix-bug 执行 Process 1-9：复现、回归覆盖、根因、最小修复、原复现与相关测试。完成后返回修复 receipt；不要自行完成 Step 10-12，也不要提交。
 
 ## Step 2 — Independent review
-主 agent 加载 gate-code-review，提炼两轴评审要求，再读取 gate-fix-bug 技能的 assets/worker-briefs/fix-bug-review.md，派一个独立 review worker；修复基线、选定失败、合同引用和完整 diff 写进简报。review 只报 findings。
+主 agent 首次进入 review 时加载 gate-code-review；已加载则复用，不要重复调用 skill。提炼两轴评审要求，再读取 gate-fix-bug 技能的 assets/worker-briefs/fix-bug-review.md，派一个独立 review worker；修复基线、选定失败、合同引用和完整 diff 写进简报。review 只报 findings。
 
 ## Step 3 — Resolve
 把 material in-scope findings 交回 fix worker（send_message 或新 worker），完成 gate-fix-bug Step 11-12，重跑原复现和相关测试；重复 Step 2-3 直到没有 material findings。
@@ -111,14 +111,17 @@ export const NODE_METHODS: Record<string, string> = Object.fromEntries(Object.en
 /** Nodes that dispatch a worker; docs and note-lifecycle finish in the root agent. */
 export const WORKER_NODES = new Set(GATE_RECORD_NODES.filter(node => node !== 'docs' && node !== 'note-lifecycle'))
 
-export const DISPATCH_RULE = `## 派发规则
-每次派 subagent 前，按当前 procedure 的 method 重新加载技能；不要使用记忆中的节点或技能；多轮/压缩后重新确认。`
+export const DISPATCH_RULE = `## 技能加载规则
+1. 本会话已经通过 skill 工具加载过的技能，内容仍在上文时直接复用，不要重复调用 skill。
+2. 只有以下情况才重新加载：本会话首次进入该技能；compaction 后内容已不在上下文；技能文件/版本发生变化；用户明确要求刷新。
+3. gate_record / gate_status 返回新的 procedure 只代表 node、轮次或 findings 变化，不代表要重新加载技能。
+4. 多轮 review/revise 复用同一份技能内容；把新的 findings、文件范围和要求传给 worker，不要重新加载技能。`
 
 export const REVIEWING_CODE_PROCEDURE = `## /gate-implement-review 编排
-主 agent 加载 gate-code-review；派只读 review worker 覆盖 Standards 与 Spec 两轴；完成后 gate_record({node:'code-review-standalone', findings, reviewAxes, workerSessionIds}) 回 discuss。`
+主 agent 首次进入时加载 gate-code-review；已加载则复用，不要重复调用 skill。派只读 review worker 覆盖 Standards 与 Spec 两轴；完成后 gate_record({node:'code-review-standalone', findings, reviewAxes, workerSessionIds}) 回 discuss。`
 
 export const REVIEWING_PROPOSAL_PROCEDURE = `## /gate-propose-review 编排
-主 agent 加载 gate-plan-review；派只读 review worker 覆盖 Standards/Spec/Architecture 三轴；完成后 gate_record({node:'proposal-review', findings, reviewAxes, workerSessionIds}) 回 discuss。`
+主 agent 首次进入时加载 gate-plan-review；已加载则复用，不要重复调用 skill。派只读 review worker 覆盖 Standards/Spec/Architecture 三轴；完成后 gate_record({node:'proposal-review', findings, reviewAxes, workerSessionIds}) 回 discuss。`
 
 export const REVIEWING_VERIFY_PROCEDURE = `## /gate-code-verify 编排
 派子代理加载使用 gate-user-verify 按 Step 6 汇报；verification.toolResults 必须是 verify worker session log 中真实 tool/result 的 call_... id，evidence 是 workspace 内的普通文件；完成后 gate_record({node:'verify-standalone', verification, workerSessionIds}) 回 discuss。`
@@ -152,7 +155,7 @@ export const NODE_PROCEDURES: Record<string, string> = {
 }
 
 export const GATE_METHODOLOGY = `## Gate 方法论
-本段只定义各阶段的工作方法与质量标准。当前 phase/node、procedure 和要加载的技能来自最近一次 gate_status、gate_record 或命令结果；只执行当前 phase 的 procedure，其他阶段的方法论仅作背景参考；compaction 后必须重新获取。
+本段只定义各阶段的工作方法与质量标准。当前 phase/node、procedure 和要加载的技能来自最近一次 gate_status、gate_record 或命令结果；只执行当前 phase 的 procedure，其他阶段的方法论仅作背景参考；compaction 后必须重新获取 procedure，并确认技能内容是否仍在上下文：首次需要时加载，已在上文则复用，不要因 procedure 更新重复加载。
 
 ## discuss
 discuss 是默认阶段。先读相关代码、文档、历史 Note 与项目约束；明确实际问题、约束、已有决定与冲突；给出有实质差异的可行方案、推荐与关键权衡；只对未决的产品、范围、兼容性、成本、风险等价值判断提问；汇报已解决、未决事项和建议下一阶段。不进入实施，只有用户明确授权才离开。
