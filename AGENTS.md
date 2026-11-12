@@ -65,6 +65,8 @@ DSH 开发文档参考：`deepseek-harness/docs`
 
 ## 插件安装
 
+参考同类插件的本地安装文档：`E:\see-dsh-novel\docs\plugin-local-install.md`。
+
 - **开发安装用 link**：`plugin_manager` 的 `install_bundle` target 指向本地包目录绝对路径，例如 `E:\workspace\dsh-plugin\gate\packages\gate`；profile 记录为 `link:E:/workspace/dsh-plugin/gate/packages/gate`。这是 DSH 的标准开发方式，不要用 npm 版本替代开发期的 link。
 - 安装前在仓库根 `pnpm build`，确认 `packages/gate/lib/index.js` 存在；link 加载的是该构建产物。
 - 卸载用 `plugin_manager` 的 `remove_bundle` 或 `pnpm remove`。不要手动递归删除 profile 的 `node_modules`：Windows 上 link 是 junction，递归删除可能穿过 junction 删除源目录；`pnpm remove` 实测只移除 link，保留 target。

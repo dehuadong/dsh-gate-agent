@@ -8,28 +8,33 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 
 ### 开发安装（link，标准方式）
 
+与 `see-dsh-novel` 的 `docs/plugin-local-install.md` 相同：
+
 1. 在仓库根构建：
 
    ```text
-   pnpm install
-   pnpm build
+   pnpm --filter dsh-gate-agent build
    ```
 
-2. 安装到 profile：`plugin_manager` 的 `install_bundle`，target 指向本包源码目录的绝对路径，例如：
+   安装读取的是磁盘上的 `packages/gate/lib/`，不是 `src/`；`lib/` 被 `.gitignore` 排除。
+
+2. 调用 `plugin_manager`，`action: install_bundle`，`target` 传包目录绝对路径：
 
    ```text
    E:\workspace\dsh-plugin\gate\packages\gate
    ```
 
-   profile 会记录：
+   本地目录不走 npm，不带 `registry`。成功判定是 `application: applied` 且 `warnings: []`；`stage: enable` / `changed: true` 不代表装载成功。
+
+3. profile 侧应看到：
 
    ```json
    "dsh-gate-agent": "link:E:/workspace/dsh-plugin/gate/packages/gate"
    ```
 
-   这是 DSH 插件的标准开发方式；源码改动后重新 `pnpm build`，重启 DSH 即可加载新的 `lib/index.js`。
+   `node_modules/dsh-gate-agent` 是指向源码目录的 Junction。源码改动后重新 `pnpm build`，重启 DSH 加载新的 `lib/index.js`。
 
-3. 卸载用 `plugin_manager` 的 `remove_bundle` 或 `pnpm remove`。不要用递归删除工具手动清理 profile 的 `node_modules`：Windows 上 link 是 junction，递归删除可能穿过它删除源目录；`pnpm remove` 实测只移除 link，保留 source。
+4. 卸载用 `plugin_manager` 的 `remove_bundle`，target 为 `dsh-gate-agent`。标准卸载只改 profile 的 bundles、依赖和 Junction，不碰工作区。不要用递归删除工具清理 profile 的 `node_modules`：Windows 上 link 是 junction，递归删除可能穿过它删除源目录；`pnpm remove` 实测只移除 link。
 
 ### 生产安装（npm）
 
