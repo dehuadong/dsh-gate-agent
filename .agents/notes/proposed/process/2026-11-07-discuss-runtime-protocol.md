@@ -2,6 +2,8 @@
 
 Status: proposed
 
+> 2026-11-12 [Gate root 写权限](../../implemented/architecture/2026-11-12-gate-root-write-policy.md) 部分取代本页的“discuss 不写文件/拒绝代码文档写入”：root 在 discuss 可写；`discuss 不派 worker` 和“不创建规划工件”仍是方法约束。两篇互链，不合并。
+
 工作项：把 `AGENTS.md` 的 Discuss 要求从语义约定变成 Gate 注入的运行时协议。
 
 ## Problem

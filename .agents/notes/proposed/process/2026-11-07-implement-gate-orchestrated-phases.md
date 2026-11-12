@@ -2,6 +2,8 @@
 
 Status: proposed
 
+> 2026-11-12 Note [Planning 必读 rfc 与 Note/verify 契约](../../implemented/process/2026-11-12-gate-planning-resources-and-note-contracts.md) 承接本页的 planning 资源加载部分：补上“写设计节前必读 rfc”、worker 转交、notePaths 归一、verify callId 和 finalize 自引用。两篇部分重叠，不合并。
+
 > 2026-11-10 Note [内置 write-agent-notes 与 Verify 后 lifecycle](../../implemented/process/2026-11-10-gate-notes-builtin-lifecycle.md) 部分取代本页的“插件不复制 write-agent-notes”约束：“唯一载体”仍然成立；write-agent-notes 改为插件内置，项目仍不复制。
 
 工作项：把 `gate-planning` 与 `proposal.md`、`rfc.md`、`write-agent-notes` 整合；工作项与技术设计由同一份 proposed Agent Note 承接。

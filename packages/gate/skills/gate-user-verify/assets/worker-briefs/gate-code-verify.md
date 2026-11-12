@@ -23,6 +23,7 @@
 - Regression Checks
 - Verification Limits
 - Overall Result
+- Tool result callId 列表（实际使用的 `call_...`，供 root 填 `verification.toolResults`）
 
 主 agent 负责把结果汇总给用户。
 ```

@@ -37,7 +37,7 @@ Status: implemented
 
 | phase | 静态方法论 | procedure 举例（动态，不进入静态 prompt） |
 |---|---|---|
-| discuss | 界定问题、约束、备选与权衡；不进入实施 | 短 procedure：无 worker/write；用户授权后 `gate_start_phase` |
+| discuss | 界定问题、约束、备选与权衡；不进入实施 | 短 procedure：discuss 不派 worker；主代理可自行读/写；用户授权后 `gate_start_phase`；2026-11-12 由 [Gate root 写权限](../../implemented/architecture/2026-11-12-gate-root-write-policy.md) 调整 |
 | plan | 收敛成可实施 Note；范围/验收/备选/风险；独立 plan review | 派 planning worker、`gate_note_write`、`gate_record` 字段 |
 | implement | 按已确认范围实施；测试；独立 review；verify；note lifecycle | 派 implement/review/verify worker、`reviewAxes`、`verification` |
 | code-review | 独立判断；只报 findings，不替作者修 | 派 review worker、轴结果 |

@@ -84,11 +84,12 @@ export const PLAN_ORCHESTRATION = `## /gate-enter-plan 编排
 主代理派 worker；gate 不派。
 
 ## Step 1 — Planning
-主 agent 加载技能 gate-planning 和 gate-write-agent-notes；读取 gate-planning 的 assets/worker-briefs/gate-enter-plan.md 写 planning 任务。
+主 agent 加载技能 gate-planning 和 gate-write-agent-notes；读取 gate-planning 的 SKILL.md、proposal.md 和 assets/worker-briefs/gate-enter-plan.md 写 planning 任务。
+若工作项要写设计节（Note 的 “## Design” / “### 设计” / 自由设计节），必须先读取 rfc.md，按其检查项收敛，并把适用检查点写进 worker prompt；mechanical 或不写设计节的工作项不强制读 rfc。
 先按 write-agent-notes §3 检索历史，再按 §4 判定归属与 class；用 gate_note_write 写 Note，路径与 class 必须一致。发现旧 implemented Note 被新决定完全取代时，记下归档候选；新 Note 尚未落地前不要归档。
 把工作项、约束和提炼后的规划方法写进 subagent prompt；planning worker 不加载 gate 技能。
 完成后调 gate_record({node:'plan', task, notePaths, noteDecision, noteSearch, workerSessionIds})。
-notePaths 是 [{path,class,lifecycle}] 数组；mechanical:<说明> 用 noteDecision:'mechanical' 且 notePaths 为空。
+notePaths 是 [{path,class,lifecycle}] 数组；path 接受 .agents/notes/<lifecycle>/<class>/...、<lifecycle>/<class>/... 或 <class>/...，gate_record 归一为完整路径；mechanical:<说明> 用 noteDecision:'mechanical' 且 notePaths 为空。
 
 ## Step 2 — Plan Review
 主 agent 加载技能 gate-plan-review；读取该技能的 assets/worker-briefs/plan-review.md 写 review 任务，按任务规模和风险自行决定派一个或多个只读 review worker，覆盖 Standards、Spec、Architecture 三轴。
@@ -117,14 +118,14 @@ worker 不加载 gate 技能。
 
 ## Step 3 — Verify
 主 agent 加载技能 gate-verify，读取该技能的 assets/worker-briefs/gate-verify.md 写 verify 任务，派 verify worker 完成最终验收。
-完成后调 gate_record({node:'verify', verification, workerSessionIds})。
+完成后调 gate_record({node:'verify', verification, workerSessionIds})；verification.toolResults 必须是 verify worker session log 中真实 tool/result 的 call_... id，evidence 是 workspace 内的普通文件。
 只有最终 PASS 才完成交付；FAIL 回到 implement-revise。
 状态更新遵循项目登记的工作项与决策记录生命周期。
 
 ## Step 4 — Note lifecycle
 Verify PASS 后进入 note-lifecycle，不得直接 complete。
 主 agent 调 gate_note_finalize，再调 gate_note_verify；通过后 gate_record({node:'note-lifecycle'})。
-mechanical 工作项自动跳过；跨会话 journal 只报告不恢复；archived manifest 只由用户执行 /gate-note-seal。回 discuss 前 gate 会执行一次 git add -A + git commit；非 git 或无改动跳过。`
+mechanical 工作项自动跳过；跨会话 journal 只报告不恢复；archived manifest 只由用户执行 /gate-note-seal。note-lifecycle 完成后建议提交本次实现与 Note；gate 不自动执行 git add/commit。`
 
 export const FIX_BUG_ORCHESTRATION = `## /gate-fix-bug 编排
 主 agent 读取 gate-fix-bug；主 agent 只汇总，不自行修复。
@@ -139,7 +140,7 @@ export const FIX_BUG_ORCHESTRATION = `## /gate-fix-bug 编排
 把 material in-scope findings 交回 fix worker（send_message 或新 worker），完成 gate-fix-bug Step 11-12，重跑原复现和相关测试；重复 Step 2-3 直到没有 material findings。
 
 ## Step 4 — Record
-完成后调 gate_record({node:'fix-bug', workerSessionIds})，workerSessionIds 包含 fix 与 review worker；gate 会 git add -A + git commit 后回 discuss。`
+完成后调 gate_record({node:'fix-bug', workerSessionIds})，workerSessionIds 包含 fix 与 review worker；gate 不再自动提交。`
 
 export const DOCS_ORCHESTRATION = `## /gate-docs 编排
 不加载 gate 技能；范围由模型按项目实际文档需要判断。
@@ -149,7 +150,7 @@ export const NOTE_LIFECYCLE_ORCHESTRATION = `## Note lifecycle
 Verify 已 PASS；当前不派 worker，也不写业务代码。
 按顺序执行：gate_note_finalize → gate_note_verify → gate_record({node:'note-lifecycle'})。
 finalize/verify 失败留在本节点修复；archived manifest 缺失时提示用户执行 /gate-note-seal。
-只有 noteVerified=true 才能 gate_record 完成；mechanical 工作项可跳过 finalize。完成后检查本次新 Note 是否完全取代了某篇 implemented Note：有独立参考价值就在最终汇报中给出归档候选和目标命令，没有独立价值则建议删除；不要自动归档。`
+只有 noteVerified=true 才能 gate_record 完成；mechanical 工作项可跳过 finalize。完成后建议提交本次实现与 Note；gate 不自动 git add/commit。完成后检查本次新 Note 是否完全取代了某篇 implemented Note：有独立参考价值就在最终汇报中给出归档候选和目标命令，没有独立价值则建议删除；不要自动归档。`
 
 function isInside(root, target) {
   const relative = path.relative(root, target)
@@ -199,7 +200,7 @@ const REVIEWING_PROPOSAL_PROCEDURE = `## /gate-propose-review 编排
 主 agent 加载 gate-plan-review；派只读 review worker 覆盖 Standards/Spec/Architecture 三轴；完成后 gate_record({node:'proposal-review', findings, reviewAxes, workerSessionIds}) 回 discuss。`
 
 const REVIEWING_VERIFY_PROCEDURE = `## /gate-code-verify 编排
-派子代理加载使用 gate-user-verify 按 Step 6 汇报；完成后 gate_record({node:'verify-standalone', verification, workerSessionIds}) 回 discuss。`
+派子代理加载使用 gate-user-verify 按 Step 6 汇报；verification.toolResults 必须是 verify worker session log 中真实 tool/result 的 call_... id，evidence 是 workspace 内的普通文件；完成后 gate_record({node:'verify-standalone', verification, workerSessionIds}) 回 discuss。`
 
 function stepSection(text, from, to) {
   const start = text.indexOf(from)
@@ -292,7 +293,7 @@ function procedureFor(state, { reviewLimit = DEFAULT_REVIEW_LIMIT } = {}) {
   const method = NODE_METHODS[state.node] ?? '无'
   let text
   if (variant === 'discuss') {
-    text = '无 worker/write；用户授权后调用 gate_start_phase 进入 plan/implement。'
+    text = 'discuss 不派 worker；主代理可自行读/写；用户授权后调用 gate_start_phase 进入 plan/implement。'
   } else if (variant === 'blocked') {
     text = `Gate 已冻结：${state.blockReason ?? 'unknown'}；解冻后回 ${state.blockedFrom?.phase ?? 'discuss'} / ${state.blockedFrom?.node ?? '无'}；用 /gate-resume 或 /gate-return-discuss。`
   } else if (variant === 'complete') {
@@ -320,24 +321,6 @@ function procedureFailure(state, reviewLimit, fields) {
 }
 
 
-
-function commitGateChanges(root, state) {
-  const git = (args, options = {}) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options })
-  try {
-    git(['rev-parse', '--is-inside-work-tree'])
-  } catch {
-    return { ok: true, skipped: 'not-git' }
-  }
-  try {
-    if (git(['status', '--porcelain']).trim() === '') return { ok: true, skipped: 'clean' }
-    git(['add', '-A'])
-    const message = `gate: ${state.task ?? 'complete'}`.replace(/\s+/gu, ' ').slice(0, 200)
-    git(['commit', '-m', message])
-    return { ok: true, committed: true }
-  } catch (error) {
-    return { ok: false, reason: String(error?.stderr ?? error?.message ?? error).trim() }
-  }
-}
 
 function resolveNodeBinary() {
   if (!process.versions?.electron) return process.execPath
@@ -490,6 +473,9 @@ function finalizeNote(root, entry, sessionId, decisionBody) {
   const content = readFileSync(source, 'utf8')
   let next = transformImplemented(content)
   if (typeof decisionBody === 'string' && decisionBody !== '') next = replaceSectionBody(next, '## Decision', decisionBody)
+  const sourceFromNotes = sourceRelative.replace(/^\.agents\/notes\//u, '')
+  const targetFromNotes = targetRelative.replace(/^\.agents\/notes\//u, '')
+  next = next.replaceAll(sourceRelative, targetRelative).replaceAll(sourceFromNotes, targetFromNotes)
   const dir = path.dirname(target)
   mkdirSync(dir, { recursive: true })
   const journalRelative = path.join('.agents', 'notes', `.gate-finalize-${sessionId}.json`).replaceAll('\\', '/')
@@ -577,6 +563,49 @@ function provisionProjectScripts(root) {
 }
 
 
+
+const BASE_GITIGNORE = `node_modules/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+coverage/
+dist/
+.agents/notes/.gate-finalize-*
+.agents/notes/.gate-validate-*
+.agents/notes/*.gate-backup
+`
+
+function provisionGit(root) {
+  const ignore = path.join(root, '.gitignore')
+  let ignoreStatus = 'existing'
+  if (!existsSync(ignore)) {
+    writeFileSync(ignore, BASE_GITIGNORE)
+    ignoreStatus = 'created'
+  }
+  const git = (args, options = {}) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options })
+  let gitError = null
+  const init = () => {
+    try {
+      git(['init', '-b', 'main'])
+    } catch (first) {
+      try { git(['init']) } catch (second) {
+        gitError = String(second?.stderr ?? second?.message ?? first?.stderr ?? first?.message ?? second).trim()
+        return 'init-failed'
+      }
+    }
+    return 'initialized'
+  }
+  let gitStatus
+  try {
+    gitStatus = git(['rev-parse', '--is-inside-work-tree']).trim() === 'true' ? 'existing' : init()
+  } catch (error) {
+    gitStatus = error?.code === 'ENOENT' ? 'unavailable' : init()
+  }
+  return { git: gitStatus, ignore: ignoreStatus, gitError }
+}
 
 function provisionCi(root) {
   const ciDir = path.join(root, '.agents', 'gate', 'ci')
@@ -747,29 +776,13 @@ function applyProjectionEvent(state, event) {
   return state
 }
 
-function sandboxModeFor(state) {
-  if (state.phase === 'docs') return 'workspace-write'
-  if (state.phase !== 'orchestrating') return 'read-only'
-  return ['plan', 'plan-revise', 'implement', 'implement-revise', 'fix-bug'].includes(state.node) ? 'workspace-write' : 'read-only'
-}
-
-function setSandbox(ctx, agent, state) {
-  const mode = sandboxModeFor(state)
-  try {
-    const policy = ctx.get('sandboxPolicy')
-    if (policy?.overrideOf?.(agent?.session) === mode) return
-    agent?.session?.append('sandbox/mode', { mode })
-  } catch { /* host may not expose sandbox/session append in a test harness */ }
-}
-
 function restrictionFilter(state, worker) {
   const writeTools = ['write', 'edit', 'apply_patch', 'pwsh', 'bash']
   if (worker) {
     if (state.node === 'implement' || state.node === 'implement-revise' || state.node === 'fix-bug') return undefined
     return { deny: writeTools }
   }
-  if (state.phase === 'docs' || state.phase === 'orchestrating') return undefined
-  return { deny: writeTools }
+  return state.phase === 'blocked' ? { deny: ['write', 'edit', 'apply_patch'] } : undefined
 }
 
 const restrictionState = new WeakMap()
@@ -840,7 +853,6 @@ function createStateRuntime(ctx) {
       return loadState(root, agent)
     },
     write(root, agent, state) {
-      setSandbox(ctx, agent, state)
       if (handle !== undefined) return state
       return saveState(root, agent, state)
     },
@@ -938,6 +950,8 @@ function targetList(name, args) {
     .map(match => match[1].trim())
 }
 
+const GATE_FROZEN_REASON = 'Gate 已冻结：先 /gate-resume 或 /gate-return-discuss'
+
 function gateDenyReason(ctx, exec, store) {
   if (exec.name === 'gate_record') {
     const root = rootAgentOf(ctx, exec.agent)
@@ -946,7 +960,8 @@ function gateDenyReason(ctx, exec, store) {
   if (['subagent', 'subagent_fork', 'workflow'].includes(exec.name)) {
     const gate = resolveGate(ctx, exec.agent)
     const state = store.read(gate.root, exec.agent)
-    if (state.phase === 'discuss') return 'discuss 只读讨论，不派 worker'
+    if (state.phase === 'blocked') return GATE_FROZEN_REASON
+    if (state.phase === 'discuss') return 'discuss 不派 worker'
     if (state.node === 'note-lifecycle') return 'note-lifecycle 只做 Note 收尾，不派 worker'
     return undefined
   }
@@ -964,8 +979,7 @@ function gateDenyReason(ctx, exec, store) {
         if (!workerWriteAllowed(state, target)) return `worker ${state.node ?? 'unknown'} 不允许写该目标`
         continue
       }
-      if (state.phase === 'orchestrating') return undefined
-      if (state.phase !== 'docs') return '当前阶段不允许写入；主代理在编排中不写文件'
+      if (state.phase === 'blocked') return GATE_FROZEN_REASON
     }
     return undefined
   }
@@ -977,14 +991,13 @@ function gateDenyReason(ctx, exec, store) {
     const requested = exec.arguments?.workdir
     const cwd = typeof requested === 'string' && requested !== '' ? path.resolve(base, requested) : base
     const access = shellAccess(exec.arguments?.command ?? '', gate.workspace, cwd)
-    if (/\bgit(?:\.exe)?\s+(?:-c\s+\S+\s+)?commit\b/iu.test(String(exec.arguments?.command ?? '')) && ['plan', 'plan-review', 'plan-revise', 'implement', 'code-review', 'implement-revise', 'verify', 'note-lifecycle', 'fix-bug'].includes(state.node)) {
-      return 'Note lifecycle 未完成：gate 会话内拒绝 git commit'
+    if (/\bgit(?:\.exe)?\b[^\n;&|]*\scommit\b/iu.test(String(exec.arguments?.command ?? '')) && effective.worker && !['implement', 'implement-revise', 'fix-bug'].includes(state.node)) {
+      return `worker ${state.node ?? 'unknown'} 不允许 git commit`
     }
     if (!access.write) return undefined
     if (access.outsideTargets.length > 0) return '工作区外写入被拒绝'
     if (effective.worker) return workerShellAllowed(state, access) ? undefined : `worker ${state.node ?? 'unknown'} 不允许写该目标`
-    if (state.phase === 'orchestrating') return undefined
-    if (state.phase !== 'docs') return '当前阶段不允许写入；主代理在编排中不写文件'
+    if (state.phase === 'blocked') return GATE_FROZEN_REASON
     return undefined
   }
   return undefined
@@ -1014,6 +1027,25 @@ function runFormatOnNote(root, entry, content) {
   }
 }
 
+
+function normalizeNotePaths(value) {
+  if (!Array.isArray(value)) return value
+  return value.map(entry => {
+    if (entry === null || typeof entry !== 'object' || typeof entry.path !== 'string') return entry
+    const normalized = entry.path.replaceAll('\\', '/').replace(/^\.\//u, '')
+    if (normalized.startsWith('.agents/notes/')) return { ...entry, path: normalized }
+    const parts = normalized.split('/')
+    if (parts[0] === 'proposed' || parts[0] === 'implemented') return { ...entry, path: `.agents/notes/${normalized}` }
+    if (typeof entry.class === 'string' && parts[0] === entry.class && typeof entry.lifecycle === 'string') {
+      return { ...entry, path: `.agents/notes/${entry.lifecycle}/${normalized}` }
+    }
+    return { ...entry, path: normalized }
+  })
+}
+
+function notePathsForDecision(value, decision) {
+  return decision === 'mechanical' ? value : normalizeNotePaths(value)
+}
 
 function validateNotePaths(root, value, decision) {
   if (decision === 'mechanical') {
@@ -1185,15 +1217,17 @@ export function apply(ctx, config = {}) {
       let provisioned
       let projectScripts
       let projectCi
+      let projectGit
       try {
         provisioned = provisionNotes(root)
         projectCi = provisionCi(root)
         projectScripts = provisionProjectScripts(root)
+        projectGit = provisionGit(root)
       } catch (error) {
         return { kind: 'error', text: `notes 初始化失败：${error instanceof Error ? error.message : String(error)}` }
       }
-      wake(invocation, store.read(root, invocation.agent), `Gate 已初始化：${root}（phase=discuss），notes 已初始化为 ${provisioned.notes}，AGENTS.md 已更新，verify-notes 已配置为 ${projectScripts.command}，CI 已配置为 ${projectCi.workflow}。`, 'gate-init')
-      return { kind: 'success', text: `Gate 已初始化：${root}（phase=discuss）\nnotes：${provisioned.notes}\nAGENTS：${provisioned.agents}\nverify-notes：${projectScripts.command}\nCI：${projectCi.workflow}` }
+      wake(invocation, store.read(root, invocation.agent), `Gate 已初始化：${root}（phase=discuss），notes 已初始化为 ${provisioned.notes}，AGENTS.md 已更新，verify-notes 已配置为 ${projectScripts.command}，CI 已配置为 ${projectCi.workflow}，git：${projectGit.git}${projectGit.gitError === null ? '' : `（${projectGit.gitError}）`}，ignore：${projectGit.ignore}。`, 'gate-init')
+      return { kind: 'success', text: `Gate 已初始化：${root}（phase=discuss）\nnotes：${provisioned.notes}\nAGENTS：${provisioned.agents}\nverify-notes：${projectScripts.command}\nCI：${projectCi.workflow}\ngit：${projectGit.git}${projectGit.gitError === null ? '' : `（${projectGit.gitError}）`}\nignore：${projectGit.ignore}` }
     }, null)
     register('gate-enter-plan', '按用户简述进入 planning', async invocation => {
       const result = enterPhase(ctx, invocation.agent, 'plan', reviewLimit, store)
@@ -1458,7 +1492,7 @@ export function apply(ctx, config = {}) {
             type: 'object',
             additionalProperties: false,
             properties: {
-              path: { type: 'string' },
+              path: { type: 'string', description: '接受 .agents/notes/<lifecycle>/<class>/...、<lifecycle>/<class>/... 或 <class>/...；state 归一为完整路径。' },
               class: { type: 'string', enum: ['feature', 'bug-fix', 'simplification', 'architecture', 'process', 'testing'] },
               lifecycle: { type: 'string', enum: ['proposed', 'implemented'] },
             },
@@ -1472,8 +1506,8 @@ export function apply(ctx, config = {}) {
           additionalProperties: false,
           properties: {
             commands: { type: 'array', items: { type: 'string' } },
-            evidence: { type: 'array', items: { type: 'string' } },
-            toolResults: { type: 'array', items: { type: 'string' } },
+            evidence: { type: 'array', items: { type: 'string', description: 'gate workspace 内普通文件路径。' } },
+            toolResults: { type: 'array', items: { type: 'string', description: 'verify worker session log 中真实 tool/result 的 call_... id。' } },
             passed: { type: 'boolean' },
           },
           required: ['commands', 'evidence', 'toolResults', 'passed'],
@@ -1519,6 +1553,7 @@ export function apply(ctx, config = {}) {
           ]
         : []
       const findings = [...axesFindings, ...topFindings]
+      let commitHint = null
       if (args.requiresDiscussion === true) {
         if (args.node === 'plan-review') state.planReady = false
         state.blockedFrom = { phase: state.phase, node: state.node }
@@ -1552,10 +1587,11 @@ export function apply(ctx, config = {}) {
         if (decision === 'mechanical' && !isMechanical(args.task)) {
           return fail({ code: 'mechanical-required', reason: 'mechanical 只允许 task 以 mechanical: 开头。' })
         }
-        const noteError = validateNotePaths(gate.root, args.notePaths, decision)
+        const optionNotePaths = notePathsForDecision(args.notePaths, decision)
+        const noteError = validateNotePaths(gate.root, optionNotePaths, decision)
         if (noteError !== undefined) return fail(noteError)
         state.task = args.task.trim()
-        state.notePaths = decision === 'mechanical' ? [] : args.notePaths
+        state.notePaths = decision === 'mechanical' ? [] : optionNotePaths
         state.noteDecision = decision
         state.noteSearch = typeof args.noteSearch === 'string' ? args.noteSearch : null
         state.noteVerified = decision === 'mechanical'
@@ -1569,9 +1605,11 @@ export function apply(ctx, config = {}) {
           if (decision === 'mechanical' && !isMechanical(state.task)) {
             return fail({ code: 'mechanical-required', reason: 'mechanical 只允许 task 以 mechanical: 开头。' })
           }
-          const noteError = validateNotePaths(gate.root, args.notePaths ?? state.notePaths, decision)
+          const requestedNotePaths = args.notePaths ?? state.notePaths
+          const optionNotePaths = notePathsForDecision(requestedNotePaths, decision)
+          const noteError = validateNotePaths(gate.root, optionNotePaths, decision)
           if (noteError !== undefined) return fail(noteError)
-          state.notePaths = decision === 'mechanical' ? [] : (args.notePaths ?? state.notePaths)
+          state.notePaths = decision === 'mechanical' ? [] : optionNotePaths
           state.noteDecision = decision
           if (typeof args.noteSearch === 'string') state.noteSearch = args.noteSearch
           state.noteVerified = decision === 'mechanical'
@@ -1585,6 +1623,7 @@ export function apply(ctx, config = {}) {
           state.planReady = true
           state.work = 'active'
           state.blockReason = null
+          commitHint = '建议提交 planning baseline（Note + 计划）'
         } else if (state.rounds.planReview >= reviewLimit) {
           state.exhausted.plan = true
           state.blockedFrom = { phase: 'discuss', node: null }
@@ -1599,7 +1638,12 @@ export function apply(ctx, config = {}) {
           state.notePaths = []
           state.noteVerified = true
         } else {
-          if (Array.isArray(args.notePaths)) state.notePaths = args.notePaths
+          if (Array.isArray(args.notePaths)) {
+            const nextNotePaths = normalizeNotePaths(args.notePaths)
+            const noteError = validateNotePaths(gate.root, nextNotePaths, args.noteDecision ?? state.noteDecision)
+            if (noteError !== undefined) return fail(noteError)
+            state.notePaths = nextNotePaths
+          }
           if (['new', 'update', 'in-place'].includes(args.noteDecision)) state.noteDecision = args.noteDecision
         }
         state.node = 'code-review'
@@ -1651,10 +1695,6 @@ export function apply(ctx, config = {}) {
           verifiedAt: new Date().toISOString(),
         }
         if (args.node === 'verify-standalone') {
-          if (verification.passed === true) {
-            const commit = commitGateChanges(gate.root, state)
-            if (commit.ok !== true) return fail({ code: 'commit-failed', reason: commit.reason })
-          }
           state.phase = 'discuss'
           state.node = null
           state.work = 'active'
@@ -1666,8 +1706,7 @@ export function apply(ctx, config = {}) {
         } else if (state.noteDecision === 'mechanical') {
           state.noteVerified = true
           state.noteFinalized = true
-          const commit = commitGateChanges(gate.root, state)
-          if (commit.ok !== true) return fail({ code: 'commit-failed', reason: commit.reason })
+          commitHint = '建议提交实现'
           state.phase = 'discuss'
           state.node = null
           state.work = 'active'
@@ -1684,8 +1723,6 @@ export function apply(ctx, config = {}) {
           state.noteFinalizeRecovery = []
         }
       } else if (args.node === 'fix-bug') {
-        const commit = commitGateChanges(gate.root, state)
-        if (commit.ok !== true) return fail({ code: 'commit-failed', reason: commit.reason })
         state.phase = 'discuss'
         state.node = null
         state.work = 'active'
@@ -1697,8 +1734,7 @@ export function apply(ctx, config = {}) {
         if (state.noteVerified !== true) {
           return fail({ code: 'note-lifecycle-incomplete', reason: 'note-lifecycle 需要先 gate_note_finalize + gate_note_verify。' })
         }
-        const commit = commitGateChanges(gate.root, state)
-        if (commit.ok !== true) return fail({ code: 'commit-failed', reason: commit.reason })
+        commitHint = '建议提交本次实现与 Note'
         state.phase = 'discuss'
         state.node = null
         state.work = 'active'
@@ -1710,7 +1746,7 @@ export function apply(ctx, config = {}) {
       store.write(gate.root, exec.agent, state)
       const next = normalizeState(state)
       const procedure = procedureFor(next, { reviewLimit })
-      return { ok: true, phase: state.phase, node: state.node, rounds: state.rounds, blockReason: state.blockReason, verification: state.verification, procedure, method: procedure.method, state: next }
+      return { ok: true, phase: state.phase, node: state.node, rounds: state.rounds, blockReason: state.blockReason, verification: state.verification, procedure, method: procedure.method, state: next, ...(commitHint === null ? {} : { commitHint }) }
     },
   })
 

@@ -1,21 +1,21 @@
 # dsh-gate-agent
 
-Host 插件：按阶段控制 agent 的写入与评审流程，提供 `/gate-*` 命令、`gate_record` / `gate_status` 工具和专项技能。
+Host 插件：编排 gate 阶段、限制 worker 角色与评审流程，提供 `/gate-*` 命令、`gate_record` / `gate_status` 工具和专项技能。
 
-> 这是流程门禁，不是 OS 级安全边界。硬拒绝由 `ctx.tools.guard` 提供；gate 会 append `sandbox/mode`（planning/implement workspace-write，review/verify read-only），但真正需要强制隔离时仍使用 DSH 的 sandbox/approval。未知工具与任意 shell 语义不会被完整分析。
+> 这是流程门禁，不是 OS 级安全边界。硬拒绝由 `ctx.tools.guard` 提供；gate 不 append `sandbox/mode`，blocked 的写冻结是 guard/restrict 的进程级限制（显式写工具/写型 shell），真正需要隔离时仍使用 DSH 的 sandbox/approval。未知工具与任意 shell 语义不会被完整分析。
 
 ## 安装
 
 - 安装：用 `plugin_manager` 的 `install_bundle`，target 指向包含本 `package.json` 的目录绝对路径。
 - 用 `plugin_manager` 的 `install_bundle` 安装，target 指向该目录的绝对路径。
-- 插件由“开发者模式”preset 启用；`/gate-init` 初始化项目 notes、AGENTS.md、`verify-notes` 与 CI。
-- planning 使用插件内置的 `gate-write-agent-notes`。`/gate-init` 创建 `.agents/notes/` 的四个 lifecycle 根、AGENTS.md managed block、`.agents/gate/verify-notes.mjs`、`.agents/gate/ci/`，在 `package.json` 确保 `verify-notes` 脚本，并生成 `.github/workflows/verify-notes.yml`。
+- 插件由“开发者模式”preset 启用；`/gate-init` 初始化项目 notes、AGENTS.md、`verify-notes`、CI、git 仓库与基础 `.gitignore`。
+- planning 使用插件内置的 `gate-write-agent-notes`。`/gate-init` 创建 `.agents/notes/` 的四个 lifecycle 根、AGENTS.md managed block、`.agents/gate/verify-notes.mjs`、`.agents/gate/ci/`，在 `package.json` 确保 `verify-notes` 脚本，生成 `.github/workflows/verify-notes.yml`，并在非 git 工作区执行 `git init`、在 `.gitignore` 缺失时写入基础忽略项（已有文件不覆盖）。
 
 ## 命令
 
 | 命令 | 参数 | 作用 |
 |---|---|---|
-| `/gate-init` | 无 | 初始化 notes 根、AGENTS.md、`verify-notes`、`.github/workflows/verify-notes.yml`，保持 `discuss` |
+| `/gate-init` | 无 | 初始化 notes 根、AGENTS.md、`verify-notes`、`.github/workflows/verify-notes.yml`、git 仓库与基础 `.gitignore`，保持 `discuss` |
 | `/gate-enter-plan [简单需求]` | 可选 | 进入 `orchestrating/plan`；用户简述随 follow-up 交给 planning |
 | `/gate-enter-implement [简单说明]` | 可选 | 进入 `orchestrating/implement`；复用已通过 planning 的 task，或直接用简述作为当前事项 |
 | `/gate-docs` | 无 | 文档治理，不调用技能 |
@@ -40,7 +40,7 @@ root `gate:protocol` 是静态阶段方法论，覆盖 discuss / plan / implemen
 
 离开 discuss 不要求用户输入 slash command：用户在对话或 `ask_user_question` 中明确授权后，主 agent 可调用 `gate_start_phase({node:'plan'|'implement', brief})` 进入阶段。`/gate-enter-plan` / `/gate-enter-implement` 仍是用户直接进入的入口。
 
-Verify PASS 后进入 `note-lifecycle`，完成后回 discuss，不停留在 complete。回 discuss 前执行一次 `git add -A` + `git commit`（非 git 或没有改动跳过；提交失败不切 discuss）：
+Verify PASS 后进入 `note-lifecycle`，完成后回 discuss，不停留在 complete。gate 不自动 `git add -A`/`git commit`；完成 note-lifecycle 后建议由用户/主 agent 提交本次实现与 Note：
 
 1. `gate_note_finalize` 把 proposed Note 移到 `implemented/` 并更新头块；
 2. `gate_note_verify` 跑四条校验并在通过后设置 `noteVerified`；
@@ -58,7 +58,7 @@ planning worker 用 `gate_note_write` 写 `.agents/notes/proposed`；原地同�
 /gate-init
 ```
 
-从 `discuss` 开始，不进入 planning/implement。\n\n同时生成 `.agents/gate/ci/` 下的校验脚本副本和 `.github/workflows/verify-notes.yml`；CI 使用这些项目内副本，不依赖插件安装路径。
+从 `discuss` 开始，不进入 planning/implement。同时生成 `.agents/gate/ci/` 下的校验脚本副本和 `.github/workflows/verify-notes.yml`；CI 使用这些项目内副本，不依赖插件安装路径。若当前不在 git 工作区，执行 `git init`；`.gitignore` 缺失时写入基础忽略项，已有文件保持原样。
 
 ### Planning
 
@@ -117,7 +117,7 @@ gate_record({ node: 'verify', verification, workerSessionIds })
 
 - 只读；主 agent 不加载 `gate-user-verify`，只派子代理。
 - 子代理按 `gate-user-verify` 执行验收并按 Step 6 汇报；可运行测试/命令作为证据，但不得修改测试、产品代码、需求或设计，也不要自行提交。主 agent 汇总后输出给用户。
-- PASS 后 `gate_record({ node: 'verify-standalone', verification, workerSessionIds })` 会先执行一次 `git add -A` + `git commit`，再回 discuss；非 git 或没有改动跳过。
+- PASS 后 `gate_record({ node: 'verify-standalone', verification, workerSessionIds })` 回 discuss；gate 不自动提交，提交由用户/主 agent 决定。
 - 不进入 note-lifecycle；这是独立验收，不替代 implement 流程的最终 Verify。
 
 ### 缺陷修复
@@ -128,7 +128,7 @@ gate_record({ node: 'verify', verification, workerSessionIds })
 
 - 主 agent 读取 `gate-fix-bug`，按该技能的 `assets/worker-briefs/gate-fix-bug.md` 派 fix worker 执行 Process 1-9。
 - 修复完成后，主 agent 加载 `gate-code-review` 提炼评审规则，按 `gate-fix-bug` 技能的 `assets/worker-briefs/fix-bug-review.md` 另派独立 review worker 只报 findings；findings 交回 fix worker 修正。
-- 完成后 `gate_record({ node: 'fix-bug', workerSessionIds })`，workerSessionIds 包含 fix 和 review worker；gate 自动提交并回 discuss。
+- 完成后 `gate_record({ node: 'fix-bug', workerSessionIds })`，workerSessionIds 包含 fix 和 review worker；gate 不自动提交，回 discuss 后由用户/主 agent 决定提交。
 
 ### 提案评审
 
@@ -207,7 +207,7 @@ gate_record({ node: 'docs' })
 `/gate-block [原因]` 是**手动暂停**，不是沟通模式：
 
 - 保留当前 `phase/node`；
-- 冻结写入和 worker 派发；
+- 冻结显式写工具/写型 shell 和 worker 派发（进程级，不是 OS 级）；只读 shell 仍可用；
 - 会话不关闭，仍然可以正常聊天、提问、确认方案；
 - 命令本身不 follow-up，agent 不会自动继续。
 
@@ -231,7 +231,7 @@ gate_record({ node: 'docs' })
 /gate-enter-implement 按确认后的方案改
 ```
 
-blocked 时写入被拒绝；review 轮次耗尽进入 blocked 后 `exhausted` 保留，不能靠 `/gate-resume` 绕过，需要重新 `/gate-enter-plan`。
+blocked 时显式写工具/写型 shell 被拒绝，只读 shell 可用；这是 guard/restrict 的进程级冻结，不是 sandbox 级。review 轮次耗尽进入 blocked 后 `exhausted` 保留，不能靠 `/gate-resume` 绕过，需要重新 `/gate-enter-plan`。
 
 ## gate_record
 
@@ -279,7 +279,7 @@ root 返回当前 procedure（首行 `当前 phase/node`、method、procedure �
   "verification": {
     "commands": ["node packages/gate/test/unit.mjs"],
     "evidence": ["artifacts/verify.txt"],
-    "toolResults": ["tool-result-id"],
+    "toolResults": ["call_..."],
     "passed": true
   }
 }
@@ -287,8 +287,9 @@ root 返回当前 procedure（首行 `当前 phase/node`、method、procedure �
 
 - `commands`、`evidence`、`toolResults` 不能为空；
 - evidence 必须是 gate workspace 内的普通文件；
+- `toolResults` 必须是 verify worker session log 中真实 `tool/result` 的 `call_...` id；
 - gate 记录每个 evidence 的 `path`、`size`、`sha256`；
-- P0 不执行 commands，因此结果一律标记 `selfReported: true`；真正的执行绑定在后续 B 阶段。
+- 绑定成功的 verify 标记 `selfReported:false`、`executionBound:true`；`commands`/`evidence` 仍是主代理转述，不能当成完整独立执行证明。
 
 ## 配置
 
@@ -309,10 +310,12 @@ root 返回当前 procedure（首行 `当前 phase/node`、method、procedure �
 ## 已知限制
 
 - 写门禁是流程约束，不是完整安全边界；`apply_patch` 已覆盖，其他未列出的写工具不会被识别。
-- shell 只识别显式写动词、重定向和部分管道；`node -e`、`python -c`、构建脚本等仍可能写盘。
+- shell 只识别显式写动词、重定向和部分管道；`node -e`、`python -c`、构建脚本等仍可能写盘。blocked 的进程级冻结同样受此限制。
 - verify 的 `toolResults` 会用 `sessionQuery.readSession` 在 worker session log 中绑定到真实 `tool/result` callId；`commands`/`evidence` 仍是主代理转述，不能当成完整独立执行证明。
 - `ctx.tools.restrict` 只掩全局工具；scoped 写工具仍可能出现在工具面，硬拒绝由 `ctx.tools.guard` 保证。
-- 旧 gate 迁移仍属后续 B 工作项；session projection、guard/restrict/sandbox、worker tree 证据与 review axes 已在 T1/T2/T3 实现。
+- 旧 gate 版本已 append `sandbox/mode` 的会话（planning/implement workspace-write、review/verify read-only）升级后不会被新 gate 恢复；DSH 继续 replay 最后一条 mode。用新会话或由用户重新选择 sandbox mode；gate 不再管理 sandbox。
+- root 可在 code-review/verify 写文件；gate 不再自动 commit，提交由用户/主 agent 决定。修改被评审实现后必须重跑 review/verify；gate 不区分“已审阅/未审阅”文件。
+- 旧 gate 迁移仍属后续 B 工作项；session projection、guard/restrict、worker tree 证据与 review axes 已在 T1/T2/T3 实现。
 
 
 

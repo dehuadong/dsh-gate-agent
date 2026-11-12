@@ -4,6 +4,10 @@ description: Gate 规划方法：主 agent 读取后提炼任务并派发；work
 user-invocable: false
 ---
 
+## 必读资源
+
+写设计节（`## Design`、`### 设计` 或自由设计节）前必须读取 `proposal.md` 和 `rfc.md`；rfc 的检查项必须进入 worker prompt，不能以“as needed”跳过。mechanical 或不写设计节的工作项不强制读 rfc。
+
 ## 主 agent 使用
 
 主 agent 在派发前自行读取本方法，给 worker 一份自包含任务：具体工作项、约束和规划规则。worker 不应加载本技能或其他 gate 方法文件。worker prompt 只给计划内容；不要附带项目环境验证（`package.json`、Node 版本、git 状态、文件存在性、初始化 smoke 结果）。
@@ -16,7 +20,7 @@ user-invocable: false
 
 - 本次工作项就是 proposed Agent Note；
 - 产品行为、范围、验收由工作项拥有；
-- 工作项内容按 [proposal.md](./proposal.md) ；技术设计按 [rfc.md](./rfc.md) ；
+- 工作项内容按 [proposal.md](./proposal.md) ；技术设计按 [rfc.md](./rfc.md)（写设计节前必读）；
 - 技术设计与长期决定写入 Agent Note；
 - 模板使用内置 `gate-write-agent-notes` 的 `templates/proposed.md`；不新增或复制模板；
 - Note 的位置、格式、生命周期遵循内置 `gate-write-agent-notes`；不得在 planning 内另建生命周期或状态；
@@ -48,7 +52,7 @@ user-invocable: false
 
 ### 探索性设计
 
-当技术可行性会实质影响产品范围时，读取技术设计检查项[rfc.md](./rfc.md) ，在 proposed Note 中形成探索草案。
+当技术可行性会实质影响产品范围时，读取技术设计检查项[rfc.md](./rfc.md) ，在 proposed Note 中形成探索草案。只要写设计节，就必须先读 rfc.md；规模小不构成跳过理由。
 
 探索草案必须区分产品事实与临时假设，把影响产品范围的结论反馈给工作项，不得作为实施依据。
 
@@ -56,7 +60,7 @@ user-invocable: false
 
 ### 技术设计定稿
 
-需要解决重要技术决定时，使用 技术设计检查项（[rfc.md](./rfc.md) ），把已确定的产品合同转成 Agent Note 中的技术设计；一份产品合同可以由多个边界明确的 Note 分别承接。
+需要解决重要技术决定时，使用 技术设计检查项（[rfc.md](./rfc.md) ），把已确定的产品合同转成 Agent Note 中的技术设计；一份产品合同可以由多个边界明确的 Note 分别承接。只要写设计节，就必须先读 rfc.md。
 
 设计定稿遵循 技术设计规则（[rfc.md](./rfc.md) ） 的合同稳定性与评审条件。Note 的 proposed/implemented 表示交付生命周期，不代替评审和批准证据。
 
