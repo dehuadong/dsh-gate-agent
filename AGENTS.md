@@ -70,6 +70,20 @@ DSH 开发文档参考：`deepseek-harness/docs`
 - Domain docs：单上下文，领域术语表位于根 `GLOSSARY.md`（术语确定时由 `domain-modeling` 创建）；术语与决策消费规则见 [`docs/agents/domain.md`](docs/agents/domain.md)。
 - Agent Note：长期技术提案、设计、决定与备选存放在 `.agents/notes/`，格式与生命周期遵循 `write-agent-notes` Skill；本仓库不使用 Issue 跟踪器，工作项由当前任务/对话承载并链接到 Note。
 
+## npm 发布
+
+发布 `packages/gate` 到 npm 时：
+
+1. 先 `pnpm build`，确认 `packages/gate/lib/index.js` 存在；`lib/` 是 gitignored 构建产物。
+2. 在 `packages/gate` 目录执行 `npm pack --dry-run --json` 预览；不要从仓库根用 `npm pack packages/gate`，npm 会把它当 git spec。
+3. 包不能是 `private: true`，`publishConfig.access` 应为 `public`；版本号按 semver 递增。
+4. npm 命令需要访问 workspace 外的 global cache/credentials；受限 sandbox 会报 cache EPERM 或 esbuild spawn EPERM。
+5. `npm publish --access public` 后，以 `npm view dsh-gate-agent version` / `dist-tags.latest` 为发布成功证据，不以 publish 命令返回为准。
+6. 首次发布会自动产生 `0.0.0-stage` 占位版本；实际版本可能延迟可见，可能需要在 npmjs.com 做 2FA staged approval。不要因 placeholder 立即重发，否则可能 `E409 Cannot publish over previously staged version`。
+7. 发布完成后提交版本号/发布配置并推送；profile link 安装与 npm 包是两种来源，npm 发布不会自动替换已 link 的 profile。
+
+发布流程、故障排查和 0.1.0/0.1.1 实测记录见 [`2026-11-12-npm-publish-staged-release.md`](.agents/notes/implemented/process/2026-11-12-npm-publish-staged-release.md)；命令摘要见根 [`README.md`](README.md#发布)。
+
 ## 重要改动必须留笔记
 
 1. 非平凡改动（改了行为、架构、跨文件契约、流程与工具链、测试策略、落盘/网络/配置格式）前，遵循 `write-agent-notes` Skill 写或更新笔记；机械性小改（样式、格式化、打标、不改行为的补丁）直接提交。
