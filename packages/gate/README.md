@@ -571,6 +571,28 @@ discuss 和 plan 默认不允许普通文件写。`handoff`、PRD、research 等
 
 `reviewLimit` 是每个 review 节点的最大轮次；默认 5，范围 1–20。达到上限仍有 findings 时进入 blocked。
 
+它**不是项目文件**，而是 DSH profile 的插件 Config。当前 profile 的覆盖文件是：
+
+```text
+%USERPROFILE%\.dsh\profiles\<profile>\cordis.patch.yml
+```
+
+在 profile patch 中按 bundle 的 `id: gate` 覆盖：
+
+```yaml
+- id: gate
+  config:
+    reviewLimit: 8
+```
+
+- 没有 `gate` 条目时使用默认值 5；
+- 修改后重启 DSH 才生效；
+- 不要修改 `packages/gate/cordis.patch.yml` 来配置已有 profile；那是 bundle 默认层，profile patch 会覆盖它；
+- 如果使用自定义 Agent Preset，配置应放在该 preset 中对应的 `dsh-gate-agent` 条目。
+
+`.agents/gate/artifact-policy.json` 是项目级 artifact 白名单，与这里的插件 Config 是两套配置。
+
+
 ## 使用边界
 
 - gate 是流程门禁，不是 OS 安全边界；未知工具和任意 shell 语义不会被完整分析。
