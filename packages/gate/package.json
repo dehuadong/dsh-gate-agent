@@ -1,6 +1,6 @@
 {
   "name": "dsh-gate-agent",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Phase/node workflow gate with built-in commands, tools, and skills.",
   "exports": {

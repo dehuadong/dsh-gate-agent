@@ -330,7 +330,7 @@
     },
     {
       "name": "gate-enter-plan",
-      "description": "基于讨论共识、既有决策与用户输入进入 planning",
+      "description": "基于讨论共识、既有决策与用户需求进入 planning",
       "input": {
         "hint": "<具体工作事项或上下文语义>"
       }
