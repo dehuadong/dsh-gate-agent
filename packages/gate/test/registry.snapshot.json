@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "gate_start_phase",
-      "description": "在用户明确授权后从 discuss/complete 进入 plan 或 implement。仅 root agent 可调用；授权可来自对话或 ask_user_question，不要求用户输入 slash command。",
+      "description": "在用户明确授权后从 discuss/complete 进入 plan 或 implement。仅 root agent 可调用；授权可以在对话中要求用户再输入 slash command或 ask_user_question 中给出。",
       "parameters": {
         "type": "object",
         "additionalProperties": false,
@@ -186,7 +186,7 @@
     },
     {
       "name": "gate_note_write",
-      "description": "写 proposed Agent Note，或在 planning 原地更新已存在的 implemented Note。仅 planning worker；通用 write/edit/shell 被限制。",
+      "description": "写 proposed Agent Note，或在 planning 原地更新已存在的 implemented Note。仅 planning worker；通用 write/edit/apply_patch 和仓库写被拒绝，只读 shell 可用。",
       "parameters": {
         "type": "object",
         "additionalProperties": false,

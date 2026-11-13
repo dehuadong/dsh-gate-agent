@@ -1,17 +1,19 @@
 import { DEFAULT_REVIEW_LIMIT } from './config.js'
 import type { GateState } from './state.js'
 
-export const DISCUSS_ORCHESTRATION = `## Discuss
+export const DISCUSS_ORCHESTRATION = `## discuss
 
 discuss 是默认阶段，不需要命令进入。
 
-1. 先读相关代码、文档、历史 Note 与项目约束。
-2. 明确实际问题、约束、已有决定与冲突。
-3. 给出有实质差异的可行方案、推荐与关键权衡。
-4. 只对未决的产品、范围、兼容性、成本、风险等价值判断提问。
-5. 不创建提案、Note 或规格文件。
-6. 汇报：已解决事项、剩余未决事项、建议的下一阶段。
-7. 不自行离开 discuss；离开必须由用户明确授权。授权可以在对话或 ask_user_question 中给出；获得授权后进入 plan/implement，不要要求用户再输入 slash command。`
+讨论不是被动访谈；优先自行分析已有项目上下文，不把可判断的问题交给用户。不要要求用户重复已有信息，也不要求在 discuss 中确定所有实现细节。
+
+- 先读相关代码、文档、历史 Note 与项目约束。
+- 明确实际问题、约束、已有决定与冲突。
+- 给出有实质差异的可行方案、推荐与关键权衡。
+- 只对未决的产品、范围、兼容性、成本、风险等价值判断提问。
+- 不创建提案、Note 或规格文件；文件默认只读，不写工作区。提交已有改动（git add/commit/push）不受文件只读影响。
+- 汇报：已解决事项、剩余未决事项、建议的下一阶段。
+- 不自行离开 discuss；离开必须由用户明确授权。授权可以在对话中要求用户再输入 slash command或 ask_user_question 中给出；获得授权后进入 plan/implement。`
 
 export const PLAN_ORCHESTRATION = `## /gate-enter-plan 编排
 主代理派 worker；gate 不派。
@@ -112,10 +114,10 @@ export const NODE_METHODS: Record<string, string> = Object.fromEntries(Object.en
 export const WORKER_NODES = new Set(GATE_RECORD_NODES.filter(node => node !== 'docs' && node !== 'note-lifecycle'))
 
 export const DISPATCH_RULE = `## 技能加载规则
-1. 本会话已经通过 skill 工具加载过的技能，内容仍在上文时直接复用，不要重复调用 skill。
-2. 只有以下情况才重新加载：本会话首次进入该技能；compaction 后内容已不在上下文；技能文件/版本发生变化；用户明确要求刷新。
-3. gate_record / gate_status 返回新的 procedure 只代表 node、轮次或 findings 变化，不代表要重新加载技能。
-4. 多轮 review/revise 复用同一份技能内容；把新的 findings、文件范围和要求传给 worker，不要重新加载技能。`
+- 本会话已经通过 skill 工具加载过的技能，内容仍在上文时直接复用，不要重复调用 skill。
+- 只有以下情况才重新加载：本会话首次进入该技能；compaction 后内容已不在上下文；技能文件/版本发生变化；用户明确要求刷新。
+- gate_record / gate_status 返回新的 procedure 只代表 node、轮次或 findings 变化，不代表要重新加载技能。
+- 多轮 review/revise 复用同一份技能内容；把新的 findings、文件范围和要求传给 worker，不要重新加载技能。`
 
 export const REVIEWING_CODE_PROCEDURE = `## /gate-implement-review 编排
 主 agent 首次进入时加载 gate-code-review；已加载则复用，不要重复调用 skill。派只读 review worker 覆盖 Standards 与 Spec 两轴；完成后 gate_record({node:'code-review-standalone', findings, reviewAxes, workerSessionIds}) 回 discuss。`
@@ -157,8 +159,7 @@ export const NODE_PROCEDURES: Record<string, string> = {
 export const GATE_METHODOLOGY = `## Gate 方法论
 本段只定义各阶段的工作方法与质量标准。当前 phase/node、procedure 和要加载的技能来自最近一次 gate_status、gate_record 或命令结果；只执行当前 phase 的 procedure，其他阶段的方法论仅作背景参考；compaction 后必须重新获取 procedure，并确认技能内容是否仍在上下文：首次需要时加载，已在上文则复用，不要因 procedure 更新重复加载。
 
-## discuss
-discuss 是默认阶段。先读相关代码、文档、历史 Note 与项目约束；明确实际问题、约束、已有决定与冲突；给出有实质差异的可行方案、推荐与关键权衡；只对未决的产品、范围、兼容性、成本、风险等价值判断提问；汇报已解决、未决事项和建议下一阶段。不进入实施，只有用户明确授权才离开。
+${DISCUSS_ORCHESTRATION}
 
 ## plan
 把用户简述收敛成可实施计划与 proposed Note；计划必须写清范围、验收、备选与风险。Plan Review 独立判断；findings 先记录再 revise；review 通过后回 discuss。不要在规划里开始实现。
@@ -217,7 +218,7 @@ export function procedureFor(state: GateState, { reviewLimit = DEFAULT_REVIEW_LI
   const method = NODE_METHODS[state.node ?? ''] ?? '无'
   let text
   if (variant === 'discuss') {
-    text = 'discuss 不派 worker；主代理可自行读/写；用户授权后调用 gate_start_phase 进入 plan/implement。'
+    text = 'discuss 不派 worker；文件默认只读，提交已有改动不受影响；用户授权后调用 gate_start_phase 进入 plan/implement。'
   } else if (variant === 'blocked') {
     text = `Gate 已冻结：${state.blockReason ?? 'unknown'}；解冻后回 ${state.blockedFrom?.phase ?? 'discuss'} / ${state.blockedFrom?.node ?? '无'}；用 /gate-resume 或 /gate-return-discuss。`
   } else if (variant === 'complete') {

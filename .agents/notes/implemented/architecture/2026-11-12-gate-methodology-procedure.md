@@ -24,6 +24,8 @@ Status: implemented
 
 `gate:protocol` section 保留名称与 order；root 分支返回静态常量 `GATE_METHODOLOGY`，所有 phase/node variant 共用、字节不变。worker 分支是该 section 的显式例外，仍返回 node-specific `workerProtocol`（[index.js:1040](../../../../packages/gate/index.js#L1040)），不在 root 字节稳定范围内。
 
+discuss 段由 `DISCUSS_ORCHESTRATION` 提供（[2026-11-13 discuss wiring](../../implemented/architecture/2026-11-13-discuss-orchestration-wiring.md)），不再保留重复短段；其余阶段仍按 phase 分节。
+
 `GATE_METHODOLOGY` 内容：
 
 - 按 phase 分节：discuss、plan（plan/plan-review/plan-revise）、implement（implement/code-review/implement-revise/verify）、note-lifecycle、fix-bug、docs、reviewing-code/proposal/verify、blocked、complete；
@@ -37,7 +39,7 @@ Status: implemented
 
 | phase | 静态方法论 | procedure 举例（动态，不进入静态 prompt） |
 |---|---|---|
-| discuss | 界定问题、约束、备选与权衡；不进入实施 | 短 procedure：discuss 不派 worker；主代理可自行读/写；用户授权后 `gate_start_phase`；2026-11-12 由 [Gate root 写权限](../../implemented/architecture/2026-11-12-gate-root-write-policy.md) 调整 |
+| discuss | 完整规则由 `DISCUSS_ORCHESTRATION` 提供（读上下文、问题/约束、方案/权衡、只问价值判断、不创建规划产物、汇报、授权后离开）；不进入实施 | 短 procedure：discuss 不派 worker；文件只读、commit/push 允许；用户授权后 `gate_start_phase`；2026-11-13 [2026-11-13 discuss wiring](../../implemented/architecture/2026-11-13-discuss-orchestration-wiring.md) |
 | plan | 收敛成可实施 Note；范围/验收/备选/风险；独立 plan review | 派 planning worker、`gate_note_write`、`gate_record` 字段 |
 | implement | 按已确认范围实施；测试；独立 review；verify；note lifecycle | 派 implement/review/verify worker、`reviewAxes`、`verification` |
 | code-review | 独立判断；只报 findings，不替作者修 | 派 review worker、轴结果 |

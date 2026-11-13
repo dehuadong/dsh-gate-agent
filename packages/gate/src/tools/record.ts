@@ -8,6 +8,7 @@ import { classifyPath } from '../classify.js'
 import { isMechanical, enterPhase } from '../runtime/gate.js'
 import { notePathsForDecision, normalizeNotePaths, validateNotePaths } from '../notes/note-files.js'
 import { REVIEW_NODES, bindToolResults, reviewAxesError, workerEvidenceError } from '../runtime/workers.js'
+import { accessFor } from '../access.js'
 export function registerRecord(ctx: any, deps: GateDeps) {
   const { store, reviewLimit, wake } = deps
   ctx.tools.register({
@@ -70,7 +71,7 @@ export function registerRecord(ctx: any, deps: GateDeps) {
         state.phase = 'discuss'; state.node = null; state.work = 'active'; state.blockReason = null; state.blockedFrom = null
         store.write(gate.root, exec.agent, state)
         const procedure = procedureFor(state, { reviewLimit })
-        return { ok: true, phase: state.phase, node: state.node, procedure, method: procedure.method, state: normalizeState(state) }
+        return { ok: true, phase: state.phase, node: state.node, procedure, method: procedure.method, access: accessFor(normalizeState(state), false), state: normalizeState(state) }
       }
       if (state.phase !== 'orchestrating' && state.phase !== 'reviewing') {
         return fail({ code: 'not-orchestrating', phase: state.phase, stateSource: store.source, reason: `当前 phase 是 ${state.phase}；先进入对应阶段。` })
@@ -101,7 +102,7 @@ export function registerRecord(ctx: any, deps: GateDeps) {
         state.blockReason = 'needs-user-decision'
         store.write(gate.root, exec.agent, state)
         const procedure = procedureFor(state, { reviewLimit })
-        return { ok: true, phase: state.phase, blockReason: state.blockReason, reason: args.discussionReason ?? null, procedure, method: procedure.method, state: normalizeState(state) }
+        return { ok: true, phase: state.phase, blockReason: state.blockReason, reason: args.discussionReason ?? null, procedure, method: procedure.method, access: accessFor(normalizeState(state), false), state: normalizeState(state) }
       }
       if (args.node === 'proposal-review') {
         state.phase = 'discuss'
@@ -284,7 +285,7 @@ export function registerRecord(ctx: any, deps: GateDeps) {
       store.write(gate.root, exec.agent, state)
       const next = normalizeState(state)
       const procedure = procedureFor(next, { reviewLimit })
-      return { ok: true, phase: state.phase, node: state.node, rounds: state.rounds, blockReason: state.blockReason, verification: state.verification, procedure, method: procedure.method, state: next, ...(commitHint === null ? {} : { commitHint }) }
+      return { ok: true, phase: state.phase, node: state.node, rounds: state.rounds, blockReason: state.blockReason, verification: state.verification, procedure, method: procedure.method, access: accessFor(next, false), state: next, ...(commitHint === null ? {} : { commitHint }) }
     },
   })
 

@@ -11,6 +11,7 @@ import { NOTES_SKILL_DIR } from './paths.js'
 import { runNotesScripts } from './notes/scripts.js'
 import { rootAgentOf } from './runtime/session.js'
 import type { Phase } from './state.js'
+import { accessFor, accessText } from './access.js'
 
 export function registerCommands(ctx: any, deps: GateDeps) {
   const { store, reviewLimit, wake } = deps
@@ -176,7 +177,9 @@ export function registerCommands(ctx: any, deps: GateDeps) {
     register('gate-status', '查看当前 gate 状态', async (invocation: any) => {
       const gate = resolveGate(ctx, invocation.agent)
       const root = rootAgentOf(ctx, invocation.agent)
-      return { kind: 'success', text: statusText(store.read(gate.root, root), reviewLimit) }
+      const state = store.read(gate.root, root)
+      const worker = root?.id !== invocation.agent?.id
+      return { kind: 'success', text: [accessText(accessFor(state, worker)), statusText(state, reviewLimit)].join('\n\n') }
     }, null)
     register('gate-note-verify', '只读检查 notes tree/format/lifecycle/archived', async (invocation: any) => {
       const gate = resolveGate(ctx, invocation.agent)

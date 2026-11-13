@@ -5,6 +5,7 @@ import type { GateDeps } from './deps.js'
 import { randomUUID } from 'node:crypto'
 import { resolveGate } from './session.js'
 import { resolveNotesSkill } from '../notes/fs.js'
+import { accessFor, accessText } from '../access.js'
 
 export function isMechanical(task: string | null | undefined) {
   return /^mechanical:/iu.test(String(task ?? '').trim())
@@ -74,6 +75,6 @@ export function wakeGateAgent(invocation: any, text: string, command: string) {
 export function makeWake(reviewLimit: number) {
   return (invocation: any, state: GateState, text: string, command: string) => {
     const procedure = procedureFor(state, { reviewLimit })
-    wakeGateAgent(invocation, `${procedureBlock(procedure)}\n\n${text}`, command)
+    wakeGateAgent(invocation, `${procedureBlock(procedure)}\n\n${accessText(accessFor(state, false))}\n\n${text}`, command)
   }
 }

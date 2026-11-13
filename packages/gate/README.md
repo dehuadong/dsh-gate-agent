@@ -59,8 +59,8 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 
 | phase / node | 用途 | 主代理/worker 与技能 |
 |---|---|---|
-| `discuss` | 理解需求、讨论方案、确认授权 | root；不派 worker |
-| `orchestrating/plan` | 把工作项整理成规划工件 | planning worker；`gate-planning` + `gate-write-agent-notes` |
+| `discuss` | 理解需求、讨论方案、确认授权 | root；不派 worker；文件只读，可提交已有改动 |
+| `orchestrating/plan` | 把工作项整理成规划工件 | planning worker（文件只读、只读 shell、`gate_note_write`）；`gate-planning` + `gate-write-agent-notes` |
 | `orchestrating/plan-review` | Plan Review 三轴评审 | review worker；`gate-plan-review` |
 | `orchestrating/plan-revise` | 按 findings 修计划 | planning worker；`gate-planning` |
 | `orchestrating/implement` | 按已确认计划实施 | implement worker；`gate-implement` |
@@ -77,6 +77,32 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 | `complete` | 工作完成 | root；可重新进入 plan/implement |
 
 进入阶段不等于执行。主代理按当前 procedure 加载技能、派 worker，再用 `gate_record` 推进节点。
+
+## 权限
+
+| 阶段/角色 | 文件写 | Note 写 | shell | 仓库写 |
+|---|---|---|---|---|
+| discuss root | ❌ | ❌ | 只读 | add/commit/push |
+| planning worker | ❌ | ✅ gate_note_write | 只读 | ❌ |
+| plan-review / code-review / code-review-standalone / proposal-review worker | ❌ | ❌ | 只读 | ❌ |
+| implement / implement-revise / fix-bug worker | ✅ | ❌ | 可写 | add/commit/push |
+| verify / verify-standalone worker | ❌ | ❌ | 只读 | ❌ |
+| note-lifecycle root | ✅ | ✅ lifecycle 工具 | 可写 | add/commit/push |
+| docs root | ✅ | ❌ | 可写 | add/commit/push |
+| blocked root | ❌ | ❌ | 只读 | add/commit/push |
+| blocked worker | ❌ | ❌ | 只读 | ❌ |
+| complete root | ✅ | ❌ | 可写 | add/commit/push |
+
+- discuss 文件只读；要改文件先进入 plan/implement。提交已有改动用 git add/commit/push，不受文件只读影响。
+- planning worker 的 shell 只读；产品文件和仓库写拒绝。
+- implement/fix worker 保留 push。
+- access 会显示在 gate_status、/gate-status、gate_record、gate_start_phase、命令 follow-up 和 worker prompt：
+
+```text
+权限：read=yes write=none noteWrite=no shell=read repoWrite=push
+```
+
+
 
 ## 命令
 
@@ -99,7 +125,7 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 | `/gate-return-discuss` | 无 | 回到 discuss |
 | `/gate-status` | 无 | 只读显示当前 phase/node 与 procedure |
 
-离开 discuss 不要求用户输入 slash command：用户在对话或 `ask_user_question` 中明确授权后，主代理可调用 `gate_start_phase({node:'plan'|'implement', brief})`。
+离开 discuss 的授权可来自对话（包括要求用户再输入 slash command）或 `ask_user_question`；明确授权后，主代理可调用 `gate_start_phase({node:'plan'|'implement', brief})`。
 
 ## 技能
 
@@ -277,7 +303,7 @@ gate_status()
 
 ### Note 工具
 
-- `gate_note_write`：planning worker 写 proposed Note，或原地更新 implemented Note；通用 `write`/`edit`/`apply_patch`/shell 在 planning 被拒绝。
+- `gate_note_write`：planning worker 写 proposed Note，或原地更新 implemented Note；通用 `write`/`edit`/`apply_patch` 和仓库写被拒绝，只读 shell 可用。
 - `gate_note_verify`：root 在 note-lifecycle 中跑 notes 校验。
 - `gate_note_finalize`：root 把 proposed Note 移到 implemented 并更新头块。
 

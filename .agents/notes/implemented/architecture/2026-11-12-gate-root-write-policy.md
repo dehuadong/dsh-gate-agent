@@ -16,7 +16,7 @@ Status: implemented
 
 另外，review/verify 的 `read-only` sandbox 让 root 在 plan review 和 verify 阶段跑 `npm test`/临时目录时遇到 EPERM，主代理只能提权到 `danger-full-access` 取证。更根本的是，`setSandbox` 无条件 append `sandbox/mode`：旧实现会为 docs/plan/implement 升级到 `workspace-write`（用户以 read-only 启动的会话也会被升级），blocked 的 read-only 又没有恢复路径；这违反“DSH sandbox/approval 是硬边界”的既有边界。
 
-用户确认：主代理可以有自己的写权限，gate 只做编排，**编排优先派发子代理**；只有 blocked 保留“冻结写入”。硬权限应由 DSH 的 sandbox/approval 负责，而不是 gate 的 phase 判断。worker 的角色限制（planning worker 只走 `gate_note_write`、review worker 只读、implement/fix worker 可写）保持不变。gate 不 append `sandbox/mode`；blocked 的冻结由 guard/restrict 表达，用户已确认采用进程级冻结而不是 OS/sandbox 级冻结。
+用户确认：主代理可以有自己的写权限，gate 只做编排，**编排优先派发子代理**；只有 blocked 保留“冻结写入”。2026-11-13 起 discuss root 的文件写改为只读，见 [access Note](../../implemented/architecture/2026-11-13-gate-access-permissions.md)；commit/push 仍允许。硬权限应由 DSH 的 sandbox/approval 负责，而不是 gate 的 phase 判断。worker 角色限制由 2026-11-13 access Note 修订：planning worker 只走 `gate_note_write` + 只读 shell，review/verify worker 只读 shell，implement/fix worker 可写。gate 不 append `sandbox/mode`；blocked 的冻结由 guard/restrict 表达，用户已确认采用进程级冻结而不是 OS/sandbox 级冻结。
 
 ## Decision
 
@@ -42,14 +42,14 @@ Status: implemented
 
 | phase / node | root 写 | worker 写 |
 |---|---|---|
-| discuss | allow | 无 worker 节点；`subagent` 仍拒绝（discuss 不派发） |
+| discuss | 文件写 deny；commit/push allow（2026-11-13 [2026-11-13 access Note](../../implemented/architecture/2026-11-13-gate-access-permissions.md)） | 无 worker 节点；`subagent` 仍拒绝（discuss 不派发） |
 | docs | allow | 无 worker 节点；dispatch 未额外拒绝（现有行为） |
-| orchestrating plan / plan-revise | allow | planning worker 只允许 `gate_note_write`；通用 write/edit/shell 拒绝 |
+| orchestrating plan / plan-revise | allow | planning worker 只允许 `gate_note_write`；通用 write/edit/apply_patch 和仓库写拒绝；只读 shell 可用（2026-11-13 [2026-11-13 access Note](../../implemented/architecture/2026-11-13-gate-access-permissions.md)） |
 | orchestrating plan-review | allow | review worker 只读 |
 | orchestrating implement / implement-revise / fix-bug | allow | implement/fix worker 可写 |
 | orchestrating code-review | allow | review worker 只读 |
 | orchestrating verify | allow | verify worker 只读 |
-| reviewing code-review-standalone / proposal-review / verify-standalone | allow | review/verify worker 只读 |
+| reviewing code-review-standalone / proposal-review / verify-standalone | allow | review/verify worker 写拒绝、仓库写拒绝；只读 shell 可用（2026-11-13 [2026-11-13 access Note](../../implemented/architecture/2026-11-13-gate-access-permissions.md)） |
 | orchestrating note-lifecycle | allow | 无 worker 节点；dispatch 拒绝 |
 | blocked | 写 deny；只读 shell allow | 无 worker 且 `subagent` 拒绝 |
 | complete | allow | 无 worker 节点；dispatch 未额外拒绝（现有行为） |
@@ -79,7 +79,7 @@ root 的 review/verify 写权限不等于“应当修改被评审对象”；静
 
 **procedure 与文档**
 
-- `procedureFor` 的 discuss 文案改为：“discuss 不派 worker；主代理可自行读/写；用户授权后 `gate_start_phase` 进入 plan/implement。”不再出现“无 worker/write”，也不与“discuss 不派发”矛盾。
+- `procedureFor` 的 discuss 文案改为：“discuss 不派 worker；文件默认只读，提交已有改动不受影响；用户授权后 `gate_start_phase` 进入 plan/implement。”（2026-11-13 [2026-11-13 access Note](../../implemented/architecture/2026-11-13-gate-access-permissions.md)）不再出现“无 worker/write”，也不与“discuss 不派发”矛盾。
 - `DISCUSS_ORCHESTRATION` 的“不创建提案/Note/规格文件”仍是**方法约束**：discuss 的 root 写权限允许修改既有文件/文档，不等于把 discuss 变成 planning；需要在 Note 或 procedure 中明确，避免误读为可以创建规划工件。
 - blocked 文案保持冻结；`/gate-block` 命令的提示保持“冻结写入和 worker 派发”。
 - README 顶部“按阶段控制 agent 的写入”改为“root 写由 DSH 策略；gate 只冻结 blocked 并限制 worker 角色”；blocked 章节保留冻结说明，并明确冻结的是**写型 shell/显式写工具**，不是所有 shell 语义（`node -e`/build script 不在 classifier 覆盖内）；保留“gate 是流程门禁，不是 OS 安全边界”。
@@ -100,7 +100,7 @@ root 的 review/verify 写权限不等于“应当修改被评审对象”；静
 ## 已有 Note 审计
 
 - [Gate B 的 B-2/T2](../../implemented/architecture/2026-11-10-gate-dsh-native.md)：root 阶段写限制被本 Note 部分取代；worker 角色限制与 blocked 冻结保留。新 Note + 旧篇前向指针，不重写旧 Decision。
-- [notes lifecycle](../../implemented/process/2026-11-10-gate-notes-builtin-lifecycle.md)：其中第 102 行“note-lifecycle agent 侧 read-only”是旧表述；本 Note 明确 root 在该节点可写，finalize 仍是唯一 lifecycle 迁移工具。该篇是 decision，实施时只加 superseded-by 指针，不改写正文。
+- [notes lifecycle](../../implemented/process/2026-11-10-gate-notes-builtin-lifecycle.md)：其中第 102 行“note-lifecycle agent 侧 read-only”是旧表述；本 Note 明确 root 在该节点可写，finalize 仍是唯一 lifecycle 迁移工具。该篇是 decision；2026-11-13 access Note 修订 discuss/worker shell 部分，见 [2026-11-13 access Note](../../implemented/architecture/2026-11-13-gate-access-permissions.md)。
 - [方法论与 procedure 分层](../../implemented/architecture/2026-11-12-gate-methodology-procedure.md)：其 discuss procedure 记录“无 worker/write”由本 Note 改为“不派 worker；主代理可自行读/写”；方法论正文不变。
 - [2026-11-07 discuss 运行时协议](../../proposed/process/2026-11-07-discuss-runtime-protocol.md)：其“discuss 不写文件/拒绝代码文档写入”被本 Note 部分取代；discuss 不派 worker、不创建规划工件仍是方法约束。旧篇加前向链接，不合并。
 - `packages/gate/README.md:5` 的“按阶段控制写入”以及 planning/implement `workspace-write`、review/verify `read-only` 括号由本 Note 的“DSH 策略 + 只有 blocked 进程级冻结”取代；实施时同步 README，并记录“旧版本已写入 read-only 的会话”迁移 residual。
@@ -129,8 +129,8 @@ root 的 review/verify 写权限不等于“应当修改被评审对象”；静
 2. root 的 `pwsh`/`bash` 写访问在上述非 blocked phase 允许；blocked 拒绝写型 shell 但允许只读 shell；工作区外写入拒绝保持不变；`git commit` 策略已由 [commit Note](../../implemented/process/2026-11-12-gate-commit-policy.md) 取代。
 3. blocked 的 `subagent`/`subagent_fork`/`workflow` 被拒绝；discuss 和 note-lifecycle 的既有派发拒绝不变。
 4. gate 不 append `sandbox/mode`；blocked 的写冻结只由 `restrictionFilter`/`gateDenyReason` 的进程级限制表达，只读 shell 可用；测试断言 gate 不产生 sandbox mode 变更，且 blocked 的显式写被拒绝。
-5. worker 角色限制不变：planning worker 通用写拒绝、`gate_note_write` 可用；review/verify worker 写拒绝；implement/fix worker 可写；现有 worker 测试全绿。
-6. discuss procedure 不再包含“无 worker/write”，明确“discuss 不派 worker、主代理可自行读写”；`DISCUSS_ORCHESTRATION` 的“不创建规划工件”作为方法约束保留；blocked 文案仍冻结。
+5. worker 角色限制：planning worker 通用写/仓库写拒绝、`gate_note_write` 可用、只读 shell 可用；review/verify worker 写/仓库写拒绝、只读 shell 可用；implement/fix worker 可写；2026-11-13 由 [2026-11-13 access Note](../../implemented/architecture/2026-11-13-gate-access-permissions.md) 修订。
+6. discuss procedure 不再包含“无 worker/write”，明确“discuss 不派 worker、文件默认只读、commit/push 可用”；2026-11-13 由 [2026-11-13 access Note](../../implemented/architecture/2026-11-13-gate-access-permissions.md) 修订；`DISCUSS_ORCHESTRATION` 的“不创建规划工件”作为方法约束保留；blocked 文案仍冻结。
 7. README、[Gate B Note](../../implemented/architecture/2026-11-10-gate-dsh-native.md) 的 B-2/T2、[notes lifecycle](../../implemented/process/2026-11-10-gate-notes-builtin-lifecycle.md) 的 note-lifecycle read-only 表述、[方法论 Note](../../implemented/architecture/2026-11-12-gate-methodology-procedure.md) 的 discuss procedure 记录、[discuss 运行时协议](../../proposed/process/2026-11-07-discuss-runtime-protocol.md) 和 README:5 的写入描述都有本 Note 的修订指针；README 删除 planning/implement workspace-write 与 review/verify read-only 括号，并记录旧会话已写入 read-only 的迁移 residual；旧决策不被改写成相反结论。
 8. `node --check`、`npm test`、`npm run verify-notes` 通过；新增 root/worker/blocked 矩阵测试，覆盖 `subagent_fork`/`workflow` blocked、blocked 只读 shell、blocked→resume 的 restrict disposal、每个非 blocked phase 的 root `pwsh`、blocked 显式写拒绝、gate 不产生 `sandbox/mode` 变更，且没有放宽 worker 限制。
 9. 不读取仓库 `.agents/GATES.md`/`AGENTS.md` 作为运行时权限来源；不新增 Config。
@@ -139,7 +139,7 @@ root 的 review/verify 写权限不等于“应当修改被评审对象”；静
 
 - root 在 reviewing/verify 可写会削弱“评审与实现分离”的表面保证；缓解：静态方法论仍要求 review/verify 不改被评审对象，review/verify worker 仍只读，root 的修正应发生在 review/verify 之外或明确范围。
 - note-lifecycle 的自动 `commitGateChanges` 已由 [commit Note](../../implemented/process/2026-11-12-gate-commit-policy.md) 移除；gate 不再自动提交。约束：root 在 code-review/verify 期间的修改仍必须重跑 review/verify；gate 不靠 commit 工具区分“已评审/未评审”文件。这个限制写进 README/Note，不新增 baseline 机制。
-- 非 blocked 不再切 read-only 后，review/verify worker 的只读只剩 `restrictionFilter`/`workerWriteAllowed`/`workerShellAllowed` 的流程限制；review/verify worker 的 `pwsh`/`bash` 被工具限制隐藏，但这不是 OS 级安全边界。README 必须保留“gate 是流程门禁，不是 OS 安全边界”的既有声明。
+- 非 blocked 不再切 read-only 后，review/verify worker 的只读由 `restrictionFilter`/`workerWriteAllowed`/`workerShellAllowed` 的流程限制保证；2026-11-13 起 `pwsh`/`bash` 对 review/verify worker 可见但只读，仓库写拒绝。见 [2026-11-13 access Note](../../implemented/architecture/2026-11-13-gate-access-permissions.md)。README 必须保留“gate 是流程门禁，不是 OS 安全边界”的既有声明。
 - blocked 采用进程级冻结，不是 OS/sandbox 级：显式 `write`/`edit`/`apply_patch` 和写型 shell 被拒绝，但 `node -e`/build script 等分类器之外的写可以绕过。用户已确认该层级；README 的 blocked 文案必须写“写型 shell/显式写工具”，不能写成 OS 级强制。
 - 升级 residual：旧 gate 已经在会话 log 里 append 过 `sandbox/mode`（planning/implement workspace-write、review/verify read-only）；新版本不再管理 sandbox，也不会替旧会话恢复。DSH 会继续 replay 最后一条 read-only，旧 blocked/reviewing/discuss 会话仍可能遇到 EPERM。缓解：新会话，或用户显式重新选择 sandbox mode；README 的 Known Limitations 记录该 residual，不声称“DSH 策略对所有会话保持原样”。
 - blocked 仍拒绝 root 写，note-lifecycle 之后的 Note 修复只能在 discuss/complete 或 blocked 解除后进行；blocked 只读 shell 可用，写型 shell 由 guard 拒绝。这是用户选择的冻结语义，需在 README 明确。

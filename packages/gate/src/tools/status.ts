@@ -1,6 +1,7 @@
 import type { GateDeps } from '../runtime/deps.js'
 import { procedureFor, procedureResultText, renderProcedureResult, statusText } from '../protocol.js'
 import { rootAgentOf, resolveGate } from '../runtime/session.js'
+import { accessFor, accessText } from '../access.js'
 export function registerStatus(ctx: any, deps: GateDeps) {
   const { store, reviewLimit, wake } = deps
   ctx.tools.register({
@@ -22,8 +23,10 @@ export function registerStatus(ctx: any, deps: GateDeps) {
       const gate = resolveGate(ctx, exec.agent)
       if (gate.root === undefined) return { ok: false, code: 'state-unavailable', reason: '无法确定工作区。' }
       const state = store.read(gate.root, root)
-      if (root?.id !== exec.agent?.id) {
-        return { ok: true, procedure: null, method: null, text: statusText(state, reviewLimit) }
+      const worker = root?.id !== exec.agent?.id
+      const access = accessFor(state, worker)
+      if (worker) {
+        return { ok: true, procedure: null, method: null, access, text: [accessText(access), statusText(state, reviewLimit)].join('\n\n') }
       }
       const procedure = procedureFor(state, { reviewLimit })
       const includeRounds = !procedure.hasRounds
@@ -31,7 +34,8 @@ export function registerStatus(ctx: any, deps: GateDeps) {
         ok: true,
         procedure,
         method: procedure.method,
-        text: procedureResultText(procedure, statusText(state, reviewLimit, { includeRounds })),
+        access,
+        text: procedureResultText(procedure, [statusText(state, reviewLimit, { includeRounds }), accessText(access)].join('\n\n')),
       }
     },
   })

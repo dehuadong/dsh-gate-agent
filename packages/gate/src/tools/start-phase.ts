@@ -3,11 +3,12 @@ import { enterPhase } from '../runtime/gate.js'
 import { procedureFailure, procedureFor, renderProcedureResult } from '../protocol.js'
 import { rootAgentOf, resolveGate } from '../runtime/session.js'
 import { normalizeState } from '../state.js'
+import { accessFor } from '../access.js'
 export function registerStartPhase(ctx: any, deps: GateDeps) {
   const { store, reviewLimit, wake } = deps
   ctx.tools.register({
     name: 'gate_start_phase',
-    description: '在用户明确授权后从 discuss/complete 进入 plan 或 implement。仅 root agent 可调用；授权可来自对话或 ask_user_question，不要求用户输入 slash command。',
+    description: '在用户明确授权后从 discuss/complete 进入 plan 或 implement。仅 root agent 可调用；授权可来自对话（包括要求用户再输入 slash command）或 ask_user_question。',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -53,6 +54,7 @@ export function registerStartPhase(ctx: any, deps: GateDeps) {
         task: result.state!.task,
         procedure,
         method: procedure.method,
+        access: accessFor(normalizeState(result.state!), false),
         state: normalizeState(result.state!),
       }
     },

@@ -2,6 +2,7 @@ import { GATE_METHODOLOGY } from '../protocol.js'
 import type { GateDeps } from './deps.js'
 import { effectiveState, resolveGate } from './session.js'
 import { workerProtocol } from './workers.js'
+import { accessFor, accessText } from '../access.js'
 
 export function installSystemPrompt(ctx: any, deps: GateDeps) {
   ctx.inject(['systemPrompt'], (scope: any) => {
@@ -11,7 +12,7 @@ export function installSystemPrompt(ctx: any, deps: GateDeps) {
       text: (context: any) => {
         const gate = resolveGate(ctx, context.agent)
         const effective = effectiveState(ctx, context.agent, gate, deps.store)
-        if (effective.worker) return ['## Gate', 'Gate worker：只执行当前 node，不推进 phase。', workerProtocol(effective.state.node ?? '')].filter(Boolean).join('\n\n')
+        if (effective.worker) return ['## Gate', 'Gate worker：只执行当前 node，不推进 phase。', accessText(accessFor(effective.state, true)), workerProtocol(effective.state.node ?? '')].filter(Boolean).join('\n\n')
         return GATE_METHODOLOGY
       },
     })

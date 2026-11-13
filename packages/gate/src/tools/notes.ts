@@ -10,7 +10,7 @@ export function registerNoteTools(ctx: any, deps: GateDeps) {
   const { store, reviewLimit, wake } = deps
   ctx.tools.register({
     name: 'gate_note_write',
-    description: '写 proposed Agent Note，或在 planning 原地更新已存在的 implemented Note。仅 planning worker；通用 write/edit/shell 被限制。',
+    description: '写 proposed Agent Note，或在 planning 原地更新已存在的 implemented Note。仅 planning worker；通用 write/edit/apply_patch 和仓库写被拒绝，只读 shell 可用。',
     parameters: {
       type: 'object',
       additionalProperties: false,

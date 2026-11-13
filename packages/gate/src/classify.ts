@@ -29,6 +29,32 @@ export function classifyPath(root: string, value: unknown, cwd = root): PathClas
 }
 
 /** Explicit write verbs recognized in one shell statement. */
+const GIT_VALUE_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env'])
+const GIT_FILE_WRITE = new Set(['checkout', 'switch', 'reset', 'clean', 'restore', 'stash', 'merge', 'rebase', 'cherry-pick', 'apply', 'pull'])
+const GIT_NON_WRITE = new Set(['status', 'add', 'commit', 'push'])
+
+/** Return every git subcommand in a shell command, skipping global options and their values. */
+export function gitSubcommands(command: string): Set<string> {
+  const subcommands = new Set<string>()
+  for (const segment of String(command).split(/&&|\|\||;|\r?\n|\|/u)) {
+    const tokens = [...segment.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/gu)].map(match => match[1] ?? match[2] ?? match[3] ?? '')
+    const gitIndex = tokens.findIndex(token => /^git(?:\.exe)?$/iu.test(token))
+    if (gitIndex < 0) continue
+    let index = gitIndex + 1
+    while (index < tokens.length) {
+      const token = tokens[index] ?? ''
+      if (token === '--') { index += 1; break }
+      if (!token.startsWith('-')) break
+      const option = token.split('=', 1)[0] ?? token
+      if (GIT_VALUE_OPTIONS.has(option) && !token.includes('=')) index += 2
+      else index += 1
+    }
+    const subcommand = tokens[index]?.toLowerCase()
+    if (subcommand !== undefined) subcommands.add(subcommand)
+  }
+  return subcommands
+}
+
 const WRITE_VERB = /(?:^|[\s;(])(Set-Content|Add-Content|Out-File|New-Item|Remove-Item|Move-Item|Copy-Item|Rename-Item|Clear-Content|Set-Item|mkdir|md|touch|tee|rm|mv|cp|sed\s+-i)\b/iu
 
 function pathArgs(text: string): string[] {
@@ -84,12 +110,9 @@ function addTarget(targets: string[], token: string | undefined, map: Assignment
 
 /** Decide one shell statement: which explicit paths it writes. */
 function segmentAccess(text: string, root: string, cwd: string, map: AssignmentMap): SegmentAccess {
-  if (/\bgit\s+(?:status|add|commit|push)\b/iu.test(text)) {
-    return { write: false, outsideTargets: [] }
-  }
-  if (/\bgit\s+(?:checkout|reset|clean)\b/iu.test(text)) {
-    return { write: true, outsideTargets: [] }
-  }
+  const git = gitSubcommands(text)
+  if ([...git].some(command => GIT_FILE_WRITE.has(command))) return { write: true, outsideTargets: [] }
+  if ([...git].some(command => GIT_NON_WRITE.has(command))) return { write: false, outsideTargets: [] }
   const raw: string[] = []
   const verb = WRITE_VERB.exec(text)
   if (verb !== null) {

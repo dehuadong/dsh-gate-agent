@@ -12,7 +12,7 @@ export function workerProtocol(node: string) {
         ? '主代理已读取 gate-fix-bug；你执行 gate-fix-bug 的 Process 1-9（复现、回归覆盖、根因、最小修复、测试），返回修复 receipt；不要自行完成 Step 10-12，不要提交。不改产品合同、不扩大范围。'
         : '主代理已经加载所需 gate 技能，并把具体任务与相关方法要求交给你。不要自己加载 gate 技能。',
     node === 'plan' || node === 'plan-revise'
-      ? '用 gate_note_write 在 .agents/notes/proposed 下创建或更新 proposed Agent Note；原地同步既有 implemented Note 时路径写 implemented/<class>/...；planning 中通用 write/edit/shell 被限制。'
+      ? '用 gate_note_write 在 .agents/notes/proposed 下创建或更新 proposed Agent Note；原地同步既有 implemented Note 时路径写 implemented/<class>/...；planning 中 write/edit/apply_patch 和仓库写被拒绝，只读 shell 可用。'
       : '',
   ].filter(Boolean).join('\n\n')
 }
