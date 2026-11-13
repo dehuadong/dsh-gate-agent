@@ -223,6 +223,34 @@ const gateSection = host.sections.find(section => section.name === 'gate:protoco
 const staticPrompt = gateSection.text({ agent })
 check('static prompt points to gate_help', staticPrompt.includes('gate_help'))
 check('static prompt has no blocked return-discuss guidance', !staticPrompt.includes('/gate-return-discuss'))
+check('static methodology has no old aliases', !['## plan', '## reviewing-code', '## reviewing-proposal', '## reviewing-verify', '## blocked / complete'].some(heading => staticPrompt.split('\n').some(line => line.trim() === heading)))
+const methodologyCases = [
+  ['discuss', { phase: 'discuss', node: null }, 'discuss'],
+  ['blocked', { phase: 'blocked', node: null, work: 'blocked', blockReason: 'fixture' }, 'blocked'],
+  ['complete', { phase: 'complete', node: null }, 'complete'],
+  ['docs', { phase: 'docs', node: null }, 'docs'],
+  ['orchestrating fallback', { phase: 'orchestrating', node: null }, 'orchestrating'],
+  ['reviewing fallback', { phase: 'reviewing', node: null }, 'reviewing'],
+]
+for (const node of GATE_RECORD_NODES) {
+  if (node === 'docs') continue
+  const phase = ['code-review-standalone', 'proposal-review', 'verify-standalone'].includes(node) ? 'reviewing' : 'orchestrating'
+  methodologyCases.push([`${phase}/${node}`, { phase, node, task: 'work', work: 'active' }, `${phase}/${node}`])
+}
+const expectedMethodologyKeys = [...new Set(methodologyCases.map(item => item[2]))]
+const methodologyHeadingTokens = staticPrompt.split('\n')
+  .filter(line => line.startsWith('## '))
+  .flatMap(line => line.slice(3).split(' · ').map(token => token.trim()))
+  .filter(token => token !== 'Gate 方法论')
+check('static methodology keys exactly match procedures', expectedMethodologyKeys.every(key => methodologyHeadingTokens.filter(token => token === key).length === 1) && methodologyHeadingTokens.length === expectedMethodologyKeys.length && methodologyHeadingTokens.every(token => expectedMethodologyKeys.includes(token)))
+const methodologyChecks = []
+for (const [label, state, expected] of methodologyCases) {
+  saveState(workspace, agent, { ...defaultState(), ...state })
+  const result = await host.tools.gate_status.execute({}, { agent })
+  methodologyChecks.push(result.procedure?.methodologyKey === expected && result.text.includes(`方法论：${expected}`))
+}
+saveState(workspace, agent, defaultState())
+check('procedure methodologyKey matches phase/node', methodologyChecks.every(Boolean), JSON.stringify(methodologyChecks))
 check('static discuss methodology carries the full rules',
   (staticPrompt.match(/^## discuss$/gmu) ?? []).length === 1
   && ['讨论不是被动访谈', '不要要求用户重复已有信息', '不创建提案、Note 或规格文件', '文件默认只读', '提交已有改动', 'slash command或 ask_user_question 中给出'].every(text => staticPrompt.includes(text)),
@@ -230,7 +258,7 @@ check('static discuss methodology carries the full rules',
 )
 check('root prompt is the static methodology',
   staticPrompt.startsWith('## Gate 方法论')
-  && ['## discuss', '## plan', '## implement', '## code-review', '## verify', '## note-lifecycle', '## fix-bug', '## docs', '## reviewing-code', '## reviewing-proposal', '## reviewing-verify', '## blocked / complete'].every(heading => staticPrompt.includes(heading))
+  && ['## discuss', '## orchestrating/plan · orchestrating/plan-review · orchestrating/plan-revise', '## orchestrating/implement · orchestrating/implement-revise', '## orchestrating/code-review', '## orchestrating/verify', '## orchestrating/note-lifecycle', '## orchestrating/fix-bug', '## docs', '## reviewing/code-review-standalone', '## reviewing/proposal-review', '## reviewing/verify-standalone', '## blocked', '## complete', '## orchestrating', '## reviewing'].every(heading => staticPrompt.includes(heading))
   && !/^\d+\./mu.test(staticPrompt)
   && !staticPrompt.includes('状态：')
   && !staticPrompt.includes('rounds：')
@@ -1002,7 +1030,7 @@ const lifecycleVerify = await lifecycleHost.tools.gate_record.execute({
 check('verify PASS enters note-lifecycle', lifecycleVerify.ok === true && lifecycleVerify.state.node === 'note-lifecycle')
 check('verify PASS returns the note-lifecycle procedure', lifecycleVerify.procedure?.node === 'note-lifecycle' && lifecycleVerify.procedure?.method.includes('gate-write-agent-notes'))
 const lifecyclePrompt = lifecycleHost.sections.find(section => section.name === 'gate:protocol').text({ agent: lifecycleAgent })
-check('note-lifecycle prompt is the static methodology', lifecyclePrompt === staticPrompt && (lifecyclePrompt.match(/## note-lifecycle/gu) ?? []).length === 1 && !lifecyclePrompt.includes('## 技能加载规则'))
+check('note-lifecycle prompt is the static methodology', lifecyclePrompt === staticPrompt && (lifecyclePrompt.match(/## orchestrating\/note-lifecycle/gu) ?? []).length === 1 && !lifecyclePrompt.includes('## 技能加载规则'))
 const lifecycleStatus = await lifecycleHost.tools.gate_status.execute({}, { agent: lifecycleAgent })
 check('note-lifecycle procedure has no dispatch', lifecycleStatus.procedure.text.includes('gate_note_finalize') && !lifecycleStatus.procedure.text.includes('## 技能加载规则'))
 check('note-lifecycle gate_status keeps rounds in state', lifecycleStatus.text.includes('rounds：'))

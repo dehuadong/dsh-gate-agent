@@ -157,43 +157,83 @@ export const NODE_PROCEDURES: Record<string, string> = {
   'verify-standalone': REVIEWING_VERIFY_PROCEDURE,
 }
 
+export const METHODOLOGY_KEYS = [
+  'discuss',
+  'orchestrating/plan',
+  'orchestrating/plan-review',
+  'orchestrating/plan-revise',
+  'orchestrating/implement',
+  'orchestrating/code-review',
+  'orchestrating/implement-revise',
+  'orchestrating/verify',
+  'orchestrating/note-lifecycle',
+  'orchestrating/fix-bug',
+  'docs',
+  'reviewing/code-review-standalone',
+  'reviewing/proposal-review',
+  'reviewing/verify-standalone',
+  'blocked',
+  'complete',
+  'orchestrating',
+  'reviewing',
+] as const
+
+const METHODOLOGY_KEY_SET = new Set<string>(METHODOLOGY_KEYS)
+
+export function methodologyKeyFor(state: GateState): string {
+  if (state.phase === 'orchestrating' || state.phase === 'reviewing') {
+    const key = state.node === null ? state.phase : `${state.phase}/${state.node}`
+    return METHODOLOGY_KEY_SET.has(key) ? key : state.phase
+  }
+  return state.phase
+}
+
 export const GATE_METHODOLOGY = `## Gate 方法论
 本段只定义各阶段的工作方法与质量标准。当前 phase/node、procedure 和要加载的技能来自最近一次 gate_status、gate_record 或命令结果；只执行当前 phase 的 procedure，其他阶段的方法论仅作背景参考；compaction 后必须重新获取 procedure，并确认技能内容是否仍在上下文：首次需要时加载，已在上文则复用，不要因 procedure 更新重复加载。不确定有哪些 /gate-* 命令或工具用途时，调用只读 gate_help。
 
 ${DISCUSS_ORCHESTRATION}
 
-## plan
+## orchestrating/plan · orchestrating/plan-review · orchestrating/plan-revise
 把讨论共识、既有决策与用户需求收敛成可实施计划与 proposed Note；计划必须写清范围、验收、备选与风险。Plan Review 独立判断；findings 先记录再 revise；review 通过后回 discuss。不要在规划里开始实现。
 
-## implement
+## orchestrating/implement · orchestrating/implement-revise
 按已确认的计划或讨论后的实施说明实施并完成测试；实现后做独立 review，再用可执行证据 verify；最后完成 Note lifecycle。不扩大范围，不在实现中重新规划。
 
-## code-review
+## orchestrating/code-review
 独立判断改动是否满足合同与标准；只报 findings，不修代码、不替代 verify；findings 记录后再进入 revise。
 
-## verify
+## orchestrating/verify
 用可执行证据判定 PASS/FAIL；不修改产品/测试让结果变绿；FAIL 回 implement-revise。
 
-## note-lifecycle
+## orchestrating/note-lifecycle
 完成 Note 的 finalize 与校验；不写业务代码；检查是否产生归档候选；完成后回 discuss。
 
-## fix-bug
+## orchestrating/fix-bug
 对已授权的实现缺陷：复现、回归覆盖、根因、最小修复、独立 review；不做新功能、不扩大范围；完成后回 discuss。
 
 ## docs
 文档治理；不改变功能行为；范围由模型按项目实际文档需要判断；完成后回 discuss。
 
-## reviewing-code
+## reviewing/code-review-standalone
 只读 code review：独立判断 Standards 与 Spec 两轴，只输出 findings，不修代码、不替代 verify。
 
-## reviewing-proposal
+## reviewing/proposal-review
 只读提案评审：覆盖 Standards、Spec、Architecture 三轴，只输出判断，不修改规划、不自动 revise。
 
-## reviewing-verify
+## reviewing/verify-standalone
 只读独立验收：不改代码、不替代 implement，只输出 PASS/FAIL 与证据判断。
 
-## blocked / complete
-blocked 表示冻结：等待 /gate-resume。complete 表示当前任务完成，新任务需要重新授权。`
+## blocked
+blocked 表示冻结：等待 /gate-resume。
+
+## complete
+complete 表示当前任务完成，新任务需要重新授权。
+
+## orchestrating
+当前处于 orchestrating 但没有匹配 node；调用 gate_status 重新读取；若仍不一致，回 discuss 修复 Gate 状态。
+
+## reviewing
+当前处于 reviewing 但没有匹配 node；调用 gate_status 重新读取；若仍不一致，回 discuss 修复 Gate 状态。`
 
 /**
  * Procedure variant for the current phase/node. The root prompt is static; this
@@ -238,7 +278,7 @@ export function procedureFor(state: GateState, { reviewLimit = DEFAULT_REVIEW_LI
   if (variant === 'plan' || variant === 'implement') {
     text = [text, `## 当前轮次\n${roundsText(state, reviewLimit)}`].filter(Boolean).join('\n\n')
   }
-  return { phase: state.phase, node: state.node, method, text, hasRounds: variant === 'plan' || variant === 'implement' }
+  return { phase: state.phase, node: state.node, methodologyKey: methodologyKeyFor(state), method, text, hasRounds: variant === 'plan' || variant === 'implement' }
 }
 
 export function procedureFailure(state: GateState, reviewLimit: number, fields: Record<string, unknown>) {
@@ -289,10 +329,10 @@ export function statusText(state: GateState, reviewLimit = DEFAULT_REVIEW_LIMIT,
   return lines.join('\n')
 }
 
-export interface Procedure { phase: string; node: string | null; method: string; text: string; hasRounds: boolean }
+export interface Procedure { phase: string; node: string | null; methodologyKey: string; method: string; text: string; hasRounds: boolean }
 
 export function procedureBlock(procedure: Procedure) {
-  return `当前 phase/node：${procedure.phase} / ${procedure.node ?? '无'}\n方法：${procedure.method}\n\n${procedure.text}`
+  return `当前 phase/node：${procedure.phase} / ${procedure.node ?? '无'}\n方法论：${procedure.methodologyKey}\n方法：${procedure.method}\n\n${procedure.text}`
 }
 
 export function procedureResultText(procedure: Procedure, trailing: string) {
