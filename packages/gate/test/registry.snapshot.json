@@ -320,6 +320,19 @@
         "type": "object",
         "additionalProperties": true
       }
+    },
+    {
+      "name": "gate_init_verify",
+      "description": "root-only 只读校验 /gate-init 产物：init-manifest、immutable hash、artifact policy、AGENTS managed block、verify-notes script、workflow、notes 目录。",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      }
     }
   ],
   "commands": [

@@ -5,6 +5,7 @@ import { enterPhase } from './runtime/gate.js'
 import { statusText } from './protocol.js'
 import { provisionNotes, provisionCi, provisionProjectScripts, provisionGit } from './notes/provision.js'
 import { provisionArtifactPolicy } from './artifacts/policy.js'
+import { provisionInitManifest } from './init-manifest.js'
 import { normalizeState } from './state.js'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -40,17 +41,19 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       let projectCi
       let projectGit
       let artifactPolicy
+      let initManifest
       try {
         provisioned = provisionNotes(root)
         artifactPolicy = provisionArtifactPolicy(root)
         projectCi = provisionCi(root)
         projectScripts = provisionProjectScripts(root)
         projectGit = provisionGit(root)
+        initManifest = provisionInitManifest(root, projectScripts.command)
       } catch (error) {
         return { kind: 'error', text: `notes 初始化失败：${error instanceof Error ? error.message : String(error)}` }
       }
-      wake(invocation, store.read(root, invocation.agent), `Gate 已初始化：${root}（phase=discuss），notes 已初始化为 ${provisioned.notes}，artifact policy 为 ${artifactPolicy.path}（${artifactPolicy.status}），AGENTS.md 已更新，verify-notes 已配置为 ${projectScripts.command}，CI 已配置为 ${projectCi.workflow}，git：${projectGit.git}${projectGit.gitError === null ? '' : `（${projectGit.gitError}）`}，ignore：${projectGit.ignore}。`, 'gate-init')
-      return { kind: 'success', text: `Gate 已初始化：${root}（phase=discuss）\nnotes：${provisioned.notes}\nartifact policy：${artifactPolicy.path}（${artifactPolicy.status}）\nAGENTS：${provisioned.agents}\nverify-notes：${projectScripts.command}\nCI：${projectCi.workflow}\ngit：${projectGit.git}${projectGit.gitError === null ? '' : `（${projectGit.gitError}）`}\nignore：${projectGit.ignore}` }
+      wake(invocation, store.read(root, invocation.agent), `Gate 已初始化：${root}（phase=discuss），notes 已初始化为 ${provisioned.notes}，artifact policy 为 ${artifactPolicy.path}（${artifactPolicy.status}），init manifest 为 ${initManifest.path}（${initManifest.status}），AGENTS.md 已更新，verify-notes 已配置为 ${projectScripts.command}，CI 已配置为 ${projectCi.workflow}，git：${projectGit.git}${projectGit.gitError === null ? '' : `（${projectGit.gitError}）`}，ignore：${projectGit.ignore}。`, 'gate-init')
+      return { kind: 'success', text: `Gate 已初始化：${root}（phase=discuss）\nnotes：${provisioned.notes}\nartifact policy：${artifactPolicy.path}（${artifactPolicy.status}）\ninit manifest：${initManifest.path}（${initManifest.status}）\nAGENTS：${provisioned.agents}\nverify-notes：${projectScripts.command}\nCI：${projectCi.workflow}\ngit：${projectGit.git}${projectGit.gitError === null ? '' : `（${projectGit.gitError}）`}\nignore：${projectGit.ignore}` }
     })
     command('gate-enter-plan', async (invocation: any) => {
       const result = enterPhase(ctx, invocation.agent, 'plan', reviewLimit, store, undefined)

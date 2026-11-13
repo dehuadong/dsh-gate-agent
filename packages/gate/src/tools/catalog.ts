@@ -13,4 +13,5 @@ export const GATE_TOOLS: readonly GateToolSpec[] = [
   { name: 'gate_help', summary: '列出 gate 命令、工具和当前 phase/node；只读，root-only。' },
   { name: 'gate_artifact_write', summary: '按 artifact policy 写白名单文件；不走普通 workspace write。' },
   { name: 'gate_research_dispatch', summary: 'root-only 在 discuss/plan 派 research worker；worker 只写 research artifact。' },
+  { name: 'gate_init_verify', summary: 'root-only 只读校验 init-manifest、生成物 hash、policy 与 init 结构。' },
 ]

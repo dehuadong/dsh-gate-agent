@@ -1,6 +1,6 @@
 // Core checks for the P0 gate: state, docs, commands, gate_record, workers, write surface.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { apply, Config, DISCUSS_ORCHESTRATION, GATE_RECORD_NODES, NODE_METHODS, WORKER_NODES, loadState, saveState, defaultState, normalizeState } from '../lib/index.js'
@@ -724,7 +724,7 @@ check('main prompt is static; the procedure names the current method', workerSec
 check('procedure reuses already-loaded skills', rootStatus.procedure.text.includes('## 技能加载规则') && rootStatus.procedure.text.includes('直接复用') && rootStatus.procedure.text.includes('不要重复调用') && !rootStatus.procedure.text.includes('再重新加载 gate-planning'))
 check('plan procedure requires rfc for design work', rootStatus.procedure.text.includes('rfc.md') && rootStatus.procedure.text.includes('proposal.md') && rootStatus.procedure.text.includes('设计节'))
 const help = await workerHost.tools.gate_help.execute({}, { agent: rootAgent })
-check('gate_help lists all commands and tools', help.ok === true && help.commands.length === 17 && help.tools.length === 9 && help.commands.some(item => item.command === '/gate-enter-plan') && help.commands.some(item => item.command === '/gate-prd') && help.tools.some(item => item.name === 'gate_artifact_write') && help.tools.some(item => item.name === 'gate_research_dispatch'))
+check('gate_help lists all commands and tools', help.ok === true && help.commands.length === 17 && help.tools.length === 10 && help.commands.some(item => item.command === '/gate-enter-plan') && help.commands.some(item => item.command === '/gate-prd') && help.tools.some(item => item.name === 'gate_artifact_write') && help.tools.some(item => item.name === 'gate_research_dispatch') && help.tools.some(item => item.name === 'gate_init_verify'))
 check('gate_help explains command vs tool', help.text.includes('命令由用户执行') && help.text.includes('工具由模型调用') && help.current?.phase === 'orchestrating' && help.note?.includes('命令由用户执行'))
 const registeredToolNames = JSON.parse(readFileSync(new URL('./registry.snapshot.json', import.meta.url), 'utf8')).tools.map(tool => tool.name)
 check('gate_help tools match registry', help.tools.length === registeredToolNames.length && registeredToolNames.every(name => help.tools.some(tool => tool.name === name)))
@@ -913,6 +913,68 @@ check('artifact single-level glob matches direct file', (await initHost.tools.ga
 check('artifact single-level glob rejects nested file', (await initHost.tools.gate_artifact_write.execute({ kind: 'prd', path: 'docs/prd/sub/two.md', content: 'x' }, { agent: initAgent })).code === 'artifact-denied')
 writeFileSync(policyFile, '{ invalid json')
 check('artifact invalid policy fails safe', (await initHost.tools.gate_artifact_write.execute({ kind: 'prd', path: 'docs/prd/one.md', content: 'x' }, { agent: initAgent })).code === 'artifact-policy-invalid')
+const manifestWorkspace = mkdtempSync(path.join(os.tmpdir(), 'gate-init-manifest-'))
+const manifestHost = fakeHost(manifestWorkspace)
+const manifestAgent = { id: 'session-init-manifest', session: { header: {} } }
+const manifestInit = await manifestHost.commands['gate-init'].handler({ agent: manifestAgent, rawInput: '', attachments: [] })
+const manifestPath = path.join(manifestWorkspace, '.agents', 'gate', 'init-manifest.json')
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+check('gate-init creates init manifest', manifestInit.kind === 'success' && manifestInit.text.includes('init manifest') && manifestInit.text.includes('（created）') && manifest.version === 1 && manifest.createdAt && manifest.updatedAt === undefined && Object.keys(manifest.immutable).length === 6)
+check('init manifest hashes CI scripts and launcher', Object.keys(manifest.immutable).some(key => key.endsWith('verify-archived-agent-notes.ts')) && Object.keys(manifest.immutable).some(key => key.endsWith('verify-notes.mjs')))
+const manifestCreatedAt = manifest.createdAt
+const manifestRerun = await manifestHost.commands['gate-init'].handler({ agent: manifestAgent, rawInput: '', attachments: [] })
+const manifestAgain = JSON.parse(readFileSync(manifestPath, 'utf8'))
+check('gate-init reports manifest update', manifestRerun.text.includes('（updated）'))
+check('init manifest is stable across rerun', manifestAgain.createdAt === manifestCreatedAt && manifestAgain.updatedAt === undefined && JSON.stringify(manifestAgain.immutable) === JSON.stringify(manifest.immutable))
+const manifestVerify = await manifestHost.tools.gate_init_verify.execute({}, { agent: manifestAgent })
+check('gate_init_verify passes fresh init', manifestVerify.ok === true && manifestVerify.manifest === 'ok' && manifestVerify.artifactPolicy === 'ok' && manifestVerify.notes === 'ok')
+const mutatedManifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+delete mutatedManifest.immutable['.agents/gate/verify-notes.mjs']
+writeFileSync(manifestPath, JSON.stringify(mutatedManifest, null, 2) + '\n')
+const missingKeyVerify = await manifestHost.tools.gate_init_verify.execute({}, { agent: manifestAgent })
+check('gate_init_verify detects deleted immutable entry', missingKeyVerify.ok === false && missingKeyVerify.immutable.some(item => item.status === 'missing'))
+writeFileSync(manifestPath, JSON.stringify(manifestAgain, null, 2) + '\n')
+
+const ciFile = path.join(manifestWorkspace, '.agents', 'gate', 'ci', 'agent-note-tree.ts')
+const ciOriginal = readFileSync(ciFile, 'utf8')
+writeFileSync(ciFile, ciOriginal + '\n// tampered\n')
+const ciVerify = await manifestHost.tools.gate_init_verify.execute({}, { agent: manifestAgent })
+check('gate_init_verify detects immutable modification', ciVerify.ok === false && ciVerify.immutable.some(item => item.status === 'modified'))
+writeFileSync(ciFile, ciOriginal)
+const customManifestPolicy = { version: 1, artifacts: { prd: { phases: ['discuss'], roles: ['root'], paths: ['.scratch/prd/**'] } } }
+writeFileSync(path.join(manifestWorkspace, '.agents', 'gate', 'artifact-policy.json'), JSON.stringify(customManifestPolicy))
+const customPolicyVerify = await manifestHost.tools.gate_init_verify.execute({}, { agent: manifestAgent })
+check('gate_init_verify accepts customized policy', customPolicyVerify.ok === true && customPolicyVerify.artifactPolicy === 'customized')
+const packagePath = path.join(manifestWorkspace, 'package.json')
+const pkg = JSON.parse(readFileSync(packagePath, 'utf8'))
+pkg.scripts['verify-notes'] = 'node custom-verify.mjs'
+writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + '\n')
+const customScriptVerify = await manifestHost.tools.gate_init_verify.execute({}, { agent: manifestAgent })
+check('gate_init_verify reports custom package script', customScriptVerify.ok === true && customScriptVerify.packageScript === 'customized')
+const workflowPath = path.join(manifestWorkspace, '.github', 'workflows', 'verify-notes.yml')
+rmSync(workflowPath, { force: true })
+const missingWorkflowVerify = await manifestHost.tools.gate_init_verify.execute({}, { agent: manifestAgent })
+check('gate_init_verify reports missing workflow as warning', missingWorkflowVerify.ok === true && missingWorkflowVerify.workflow === 'missing' && missingWorkflowVerify.issues.some(issue => issue.code === 'workflow-missing'))
+rmSync(path.join(manifestWorkspace, '.agents', 'notes', 'implemented'), { recursive: true, force: true })
+const missingNotesVerify = await manifestHost.tools.gate_init_verify.execute({}, { agent: manifestAgent })
+check('gate_init_verify detects missing notes tree', missingNotesVerify.ok === false && missingNotesVerify.notes === 'missing')
+writeFileSync(path.join(manifestWorkspace, '.agents', 'gate', 'artifact-policy.json'), '{ invalid')
+const invalidPolicyVerify = await manifestHost.tools.gate_init_verify.execute({}, { agent: manifestAgent })
+check('gate_init_verify detects invalid policy', invalidPolicyVerify.ok === false && invalidPolicyVerify.artifactPolicy === 'invalid')
+const staleManifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+staleManifest.gateVersion = '0.0.0'
+writeFileSync(manifestPath, JSON.stringify(staleManifest, null, 2) + '\n')
+const staleVerify = await manifestHost.tools.gate_init_verify.execute({}, { agent: manifestAgent })
+check('gate_init_verify reports stale gate version', staleVerify.issues.some(issue => issue.code === 'stale-init'))
+writeFileSync(manifestPath, JSON.stringify(manifestAgain, null, 2) + '\n')
+writeFileSync(manifestPath, '{ invalid')
+const invalidManifestVerify = await manifestHost.tools.gate_init_verify.execute({}, { agent: manifestAgent })
+check('gate_init_verify detects invalid manifest', invalidManifestVerify.ok === false && invalidManifestVerify.manifest === 'invalid')
+rmSync(manifestPath, { force: true })
+const missingManifestVerify = await manifestHost.tools.gate_init_verify.execute({}, { agent: manifestAgent })
+check('gate_init_verify detects missing manifest', missingManifestVerify.ok === false && missingManifestVerify.manifest === 'missing')
+
+
 
 
 let gateInitCommitted = false

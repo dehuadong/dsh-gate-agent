@@ -160,6 +160,8 @@ Status: <状态>
 
 这个启动器只调用插件内置脚本，不复制技能。
 
+`/gate-init` 还会生成 `.agents/gate/init-manifest.json`，记录 CI 脚本/启动器的 hash 和 init 结构。需要核对初始化是否被改坏时，用 root-only 只读工具 `gate_init_verify`；它不检查 Note 内容，也不要在每次 Note 操作后运行。`init-manifest.json` 由 git 跟踪，同内容重跑 init 时字节稳定。
+
 - 计划完成前或提交前，运行 `npm run verify-notes`，检查 tree、format、lifecycle、archived。
 - `/gate-init` 同时生成 `.github/workflows/verify-notes.yml` 和 `.agents/gate/ci/` 校验脚本副本；CI 使用项目内副本，不依赖插件安装路径。
 - gate 会话内也可以用 `/gate-note-verify` 做同样的只读检查。

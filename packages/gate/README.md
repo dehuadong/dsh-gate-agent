@@ -153,6 +153,36 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 
 从 `discuss` 开始，不进入 planning/implement。
 
+初始化会生成：
+
+- `.agents/gate/verify-notes.mjs`
+- `.agents/gate/ci/*.ts`
+- `.agents/gate/artifact-policy.json`
+- `.agents/gate/init-manifest.json`
+
+`init-manifest.json` 记录生成物 hash、artifact-policy hash、AGENTS managed block、verify-notes script 和 notes 目录结构。它被 git 跟踪；同内容重跑 init 时字节稳定。
+
+只读核对：
+
+```text
+gate_init_verify
+```
+
+它会检查：
+
+- 5 个 CI 脚本 + launcher 的 SHA-256；
+- `artifact-policy.json` 的 schema；用户修改后有效则显示 `customized`；
+- AGENTS managed block；
+- `scripts.verify-notes`；
+- workflow 是否存在；
+- notes 四目录结构。
+
+不检查 Note 内容；Note 内容继续用：
+
+```text
+npm run verify-notes
+```
+
 ### Planning
 
 ```text
@@ -314,6 +344,20 @@ gate_status()
 ### gate_research_dispatch
 
 root-only；在 discuss 或 `orchestrating/plan` 派 research worker。worker 只能通过 artifact policy 写 research 文档，不获得通用 workspace 写。
+
+### gate_init_verify
+
+root-only 只读校验 `/gate-init` 产物：
+
+- `.agents/gate/init-manifest.json` 是否存在且有效；
+- 5 个 CI 脚本 + `verify-notes.mjs` 的 hash；
+- `artifact-policy.json` schema（custom 有效也通过）；
+- AGENTS managed block；
+- `scripts.verify-notes`；
+- workflow 存在性；
+- notes 四目录。
+
+不修改文件，不运行 `verify-notes`；Note 内容校验仍用 `npm run verify-notes`。
 
 ### Note 工具
 
@@ -526,7 +570,6 @@ discuss 和 plan 默认不允许普通文件写。`handoff`、PRD、research 等
 ```
 
 `reviewLimit` 是每个 review 节点的最大轮次；默认 5，范围 1–20。达到上限仍有 findings 时进入 blocked。
-
 
 ## 使用边界
 

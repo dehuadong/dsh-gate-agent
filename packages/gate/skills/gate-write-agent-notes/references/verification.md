@@ -35,6 +35,8 @@ Notes 读取/写入命令均接受 `--root <path>` 或 `--root=<path>`，每次�
 - 轻量（个人/无 git）：前两个脚本即可，归档封印在第一次归档后自然生效。
 - 完整：运行 `npm run verify-notes` 跑 tree/format/lifecycle/archived 四检；该脚本由 `/gate-init` 生成，只调用插件内置脚本。gate 会话内也可用 `/gate-note-verify`。
 
+初始化结构核对用 root-only 的 `gate_init_verify`；它检查 `init-manifest.json`、生成物 hash、artifact-policy schema、AGENTS block、package script、workflow 和 notes 四目录，不检查 Note 内容，也不应随每次 Note 操作运行。
+
 
 ## 脚本路径
 

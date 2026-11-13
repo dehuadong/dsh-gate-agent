@@ -6,4 +6,5 @@ import { registerNoteTools } from './notes.js'
 import { registerHelp } from './help.js'
 import { registerArtifactTools } from './artifact.js'
 import { registerResearchDispatch } from './research.js'
-export function registerTools(ctx: any, deps: GateDeps) { registerStartPhase(ctx, deps); registerRecord(ctx, deps); registerStatus(ctx, deps); registerNoteTools(ctx, deps); registerHelp(ctx, deps); registerArtifactTools(ctx, deps); registerResearchDispatch(ctx, deps) }
+import { registerInitVerify } from './init-verify.js'
+export function registerTools(ctx: any, deps: GateDeps) { registerStartPhase(ctx, deps); registerRecord(ctx, deps); registerStatus(ctx, deps); registerNoteTools(ctx, deps); registerHelp(ctx, deps); registerArtifactTools(ctx, deps); registerResearchDispatch(ctx, deps); registerInitVerify(ctx, deps) }
