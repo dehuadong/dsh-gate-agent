@@ -7,7 +7,7 @@ export interface GateCommandSpec {
 
 export const GATE_COMMANDS: readonly GateCommandSpec[] = [
   { name: 'gate-init', description: '初始化 notes、AGENTS.md、verify-notes、CI、git 与基础 .gitignore', hint: null, when: 'any' },
-  { name: 'gate-enter-plan', description: '基于讨论共识、既有决策与用户输入进入 planning', hint: '<具体工作事项或上下文语义>', when: 'discuss/complete' },
+  { name: 'gate-enter-plan', description: '基于讨论共识、既有决策与用户需求进入 planning', hint: '<具体工作事项或上下文语义>', when: 'discuss/complete' },
   { name: 'gate-enter-implement', description: '基于已确认计划或讨论后的实施说明进入 implementation', hint: '<具体工作事项或上下文语义>', when: 'discuss/complete' },
   { name: 'gate-prd', description: '在 discuss 中按用户要求创建或更新 PRD', hint: '[主题或上下文语义]', when: 'discuss' },
   { name: 'gate-fix-bug', description: '为已授权缺陷派发 fix worker，基于描述或当前上下文修复', hint: '<具体工作事项或上下文语义>', when: 'discuss/complete' },
