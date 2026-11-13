@@ -172,7 +172,7 @@ check('blocked denies worker dispatch', blockedDispatch.every(Boolean))
 await run('gate-resume')
 check('resume returns to discuss after block', stateOf().phase === 'discuss')
 await run('gate-docs', 'docs/')
-check('docs command enters docs', stateOf().phase === 'docs')
+check('docs command enters docs with optional scope', stateOf().phase === 'docs' && stateOf().task === 'docs/')
 check('docs phase allows docs', (await exec('write', { file_path: 'docs/x.md' })).kind === 'allow')
 check('docs phase allows code writes (no content classification)', (await exec('write', { file_path: 'src/x.ts' })).kind === 'allow')
 check('docs phase can end through gate_record', (await record({ node: 'docs' })).phase === 'discuss')
@@ -724,7 +724,7 @@ check('main prompt is static; the procedure names the current method', workerSec
 check('procedure reuses already-loaded skills', rootStatus.procedure.text.includes('## 技能加载规则') && rootStatus.procedure.text.includes('直接复用') && rootStatus.procedure.text.includes('不要重复调用') && !rootStatus.procedure.text.includes('再重新加载 gate-planning'))
 check('plan procedure requires rfc for design work', rootStatus.procedure.text.includes('rfc.md') && rootStatus.procedure.text.includes('proposal.md') && rootStatus.procedure.text.includes('设计节'))
 const help = await workerHost.tools.gate_help.execute({}, { agent: rootAgent })
-check('gate_help lists all commands and tools', help.ok === true && help.commands.length === 16 && help.tools.length === 7 && help.commands.some(item => item.command === '/gate-enter-plan') && help.tools.some(item => item.name === 'gate_help'))
+check('gate_help lists all commands and tools', help.ok === true && help.commands.length === 17 && help.tools.length === 9 && help.commands.some(item => item.command === '/gate-enter-plan') && help.commands.some(item => item.command === '/gate-prd') && help.tools.some(item => item.name === 'gate_artifact_write') && help.tools.some(item => item.name === 'gate_research_dispatch'))
 check('gate_help explains command vs tool', help.text.includes('命令由用户执行') && help.text.includes('工具由模型调用') && help.current?.phase === 'orchestrating' && help.note?.includes('命令由用户执行'))
 const registeredToolNames = JSON.parse(readFileSync(new URL('./registry.snapshot.json', import.meta.url), 'utf8')).tools.map(tool => tool.name)
 check('gate_help tools match registry', help.tools.length === registeredToolNames.length && registeredToolNames.every(name => help.tools.some(tool => tool.name === name)))
@@ -872,6 +872,49 @@ check('gate-init initializes without a marker and stays in discuss',
   && !existsSync(path.join(initWorkspace, '.agents', 'gate.json'))
   && loadState(initWorkspace, initAgent).phase === 'discuss')
 check('gate-init initializes git and base gitignore', initialized.kind === 'success' && existsSync(path.join(initWorkspace, '.git')) && readFileSync(path.join(initWorkspace, '.gitignore'), 'utf8').includes('node_modules/') && initialized.text.includes('git：initialized') && initialized.text.includes('ignore：created'))
+const initPolicy = JSON.parse(readFileSync(path.join(initWorkspace, '.agents', 'gate', 'artifact-policy.json'), 'utf8'))
+check('gate-init creates artifact policy base', initPolicy.version === 1 && initPolicy.artifacts.handoff && initPolicy.artifacts.prd && initPolicy.artifacts.research)
+check('gate-init base gitignore includes scratch', readFileSync(path.join(initWorkspace, '.gitignore'), 'utf8').includes('.scratch/'))
+const artifactWrite = await initHost.tools.gate_artifact_write.execute({ kind: 'prd', path: '.scratch/prd/one.md', content: '# PRD\n' }, { agent: initAgent })
+check('artifact write accepts policy file', artifactWrite.ok === true && existsSync(path.join(initWorkspace, '.scratch', 'prd', 'one.md')))
+const artifactBlockedPath = await initHost.tools.gate_artifact_write.execute({ kind: 'prd', path: '.agents/gate/artifact-policy.json', content: '{}' }, { agent: initAgent })
+check('artifact write rejects reserved policy path', artifactBlockedPath.code === 'artifact-denied')
+const artifactCaseReserved = await initHost.tools.gate_artifact_write.execute({ kind: 'prd', path: '.AGENTS/gate/artifact-policy.json', content: '{}' }, { agent: initAgent })
+check('artifact write rejects case-folded reserved path', artifactCaseReserved.code === 'artifact-denied')
+const artifactDoubleSlash = await initHost.tools.gate_artifact_write.execute({ kind: 'prd', path: '.agents//notes/x.md', content: 'x' }, { agent: initAgent })
+check('artifact write rejects normalized reserved path', artifactDoubleSlash.code === 'artifact-denied')
+const artifactOutside = await initHost.tools.gate_artifact_write.execute({ kind: 'prd', path: '../outside.md', content: 'x' }, { agent: initAgent })
+check('artifact write rejects outside path', artifactOutside.code === 'artifact-denied')
+saveState(initWorkspace, initAgent, { ...defaultState(), phase: 'blocked', work: 'blocked', blockReason: 'fixture' })
+check('artifact write rejects blocked', (await initHost.tools.gate_artifact_write.execute({ kind: 'prd', path: '.scratch/prd/blocked.md', content: 'x' }, { agent: initAgent })).code === 'artifact-denied')
+saveState(initWorkspace, initAgent, defaultState())
+const prdCommand = await initHost.commands['gate-prd'].handler({ agent: initAgent, rawInput: '产品主题', attachments: [] })
+check('gate-prd stays in discuss and requests skill', prdCommand.kind === 'success' && loadState(initWorkspace, initAgent).phase === 'discuss')
+const researchCalls = []
+const researchHost = fakeHost(initWorkspace, undefined, { subagents: {
+  getProvider: () => ({}),
+  startActivation: async spec => { researchCalls.push(spec); return { name: 'research-1', result: Promise.resolve({ output: 'research done' }), dispose: async () => {} } },
+} })
+const research = await researchHost.tools.gate_research_dispatch.execute({ question: 'What is gate?' }, { agent: initAgent, signal: new AbortController().signal })
+check('research dispatch starts a caller worker', research.ok === true && researchCalls.length === 1 && researchCalls[0].delivery === 'caller' && researchCalls[0].parent === initAgent)
+const customPolicy = { version: 1, artifacts: {
+  handoff: { phases: ['discuss'], roles: ['root'], paths: ['.scratch/handoff/exact.md'] },
+  prd: { phases: ['discuss'], roles: ['root'], paths: ['docs/prd/*.md'] },
+  research: { phases: ['discuss'], roles: ['root', 'worker'], paths: ['.scratch/research/**'] },
+} }
+const policyFile = path.join(initWorkspace, '.agents', 'gate', 'artifact-policy.json')
+writeFileSync(policyFile, JSON.stringify(customPolicy))
+await initHost.commands['gate-init'].handler({ agent: initAgent, rawInput: '', attachments: [] })
+check('gate-init preserves existing artifact policy', readFileSync(policyFile, 'utf8') === JSON.stringify(customPolicy))
+saveState(initWorkspace, initAgent, defaultState())
+check('artifact exact file matches', (await initHost.tools.gate_artifact_write.execute({ kind: 'handoff', path: '.scratch/handoff/exact.md', content: 'x' }, { agent: initAgent })).ok === true)
+check('artifact exact file rejects sibling', (await initHost.tools.gate_artifact_write.execute({ kind: 'handoff', path: '.scratch/handoff/other.md', content: 'x' }, { agent: initAgent })).code === 'artifact-denied')
+check('artifact single-level glob matches direct file', (await initHost.tools.gate_artifact_write.execute({ kind: 'prd', path: 'docs/prd/one.md', content: 'x' }, { agent: initAgent })).ok === true)
+check('artifact single-level glob rejects nested file', (await initHost.tools.gate_artifact_write.execute({ kind: 'prd', path: 'docs/prd/sub/two.md', content: 'x' }, { agent: initAgent })).code === 'artifact-denied')
+writeFileSync(policyFile, '{ invalid json')
+check('artifact invalid policy fails safe', (await initHost.tools.gate_artifact_write.execute({ kind: 'prd', path: 'docs/prd/one.md', content: 'x' }, { agent: initAgent })).code === 'artifact-policy-invalid')
+
+
 let gateInitCommitted = false
 try {
   execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: initWorkspace, stdio: 'ignore' })

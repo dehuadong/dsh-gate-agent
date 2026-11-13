@@ -11,4 +11,6 @@ export const GATE_TOOLS: readonly GateToolSpec[] = [
   { name: 'gate_note_verify', summary: '在 note-lifecycle 中运行 notes 校验；root-only。' },
   { name: 'gate_note_finalize', summary: '把 proposed Note 移到 implemented 并更新头块；root-only。' },
   { name: 'gate_help', summary: '列出 gate 命令、工具和当前 phase/node；只读，root-only。' },
+  { name: 'gate_artifact_write', summary: '按 artifact policy 写白名单文件；不走普通 workspace write。' },
+  { name: 'gate_research_dispatch', summary: 'root-only 在 discuss/plan 派 research worker；worker 只写 research artifact。' },
 ]

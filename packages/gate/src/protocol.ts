@@ -79,7 +79,7 @@ export const FIX_BUG_ORCHESTRATION = `## /gate-fix-bug 编排
 完成后调 gate_record({node:'fix-bug', workerSessionIds})，workerSessionIds 包含 fix 与 review worker；gate 不再自动提交。`
 
 export const DOCS_ORCHESTRATION = `## /gate-docs 编排
-不加载 gate 技能；范围由模型按项目实际文档需要判断。
+范围由模型按项目实际文档需要判断。
 完成后调 gate_record({node:'docs'}) 回到 discuss。`
 
 export const NOTE_LIFECYCLE_ORCHESTRATION = `## Note lifecycle

@@ -74,6 +74,7 @@ export const BASE_GITIGNORE = `node_modules/
 Thumbs.db
 coverage/
 dist/
+.scratch/
 .agents/notes/.gate-finalize-*
 .agents/notes/.gate-validate-*
 .agents/notes/*.gate-backup

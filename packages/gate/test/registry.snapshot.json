@@ -267,6 +267,59 @@
         "type": "object",
         "additionalProperties": true
       }
+    },
+    {
+      "name": "gate_artifact_write",
+      "description": "按 .agents/gate/artifact-policy.json 写白名单 artifact（handoff/prd/research 等）。只写文件，不走普通 workspace write 权限。",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "policy 中的 artifact kind。"
+          },
+          "path": {
+            "type": "string",
+            "description": "workspace 内相对路径。"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "path",
+          "content"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "gate_research_dispatch",
+      "description": "root-only：在 discuss 或 orchestrating/plan 派 research worker，等待结果；worker 只能通过 artifact policy 写 research 文档。",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      }
     }
   ],
   "commands": [
@@ -290,6 +343,13 @@
       }
     },
     {
+      "name": "gate-prd",
+      "description": "在 discuss 中按用户要求创建或更新 PRD",
+      "input": {
+        "hint": "[主题或上下文语义]"
+      }
+    },
+    {
       "name": "gate-fix-bug",
       "description": "为已授权缺陷派发 fix worker，基于描述或当前上下文修复",
       "input": {
@@ -299,7 +359,9 @@
     {
       "name": "gate-docs",
       "description": "进入文档治理，按项目文档规范处理",
-      "input": null
+      "input": {
+        "hint": "[文档范围或上下文语义]"
+      }
     },
     {
       "name": "gate-implement-review",

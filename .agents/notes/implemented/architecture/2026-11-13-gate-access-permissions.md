@@ -20,6 +20,8 @@ Status: implemented
 - discuss 仍允许 `git add/commit/push`，避免“只提交”被强制进入 implement；
 - implement/fix worker 保留 `push`。
 
+> 2026-11-13 artifact policy 部分修订：`access.write` 仍是通用写边界；discuss/plan 的 handoff/prd/research 可通过 policy-scoped `gate_artifact_write` 写白名单文件。见 [Artifact 写入白名单](2026-11-13-artifact-write-policy.md)。
+
 ## Decision
 
 ### Decision

@@ -3,6 +3,8 @@ name: gate-writing-for-agents
 description: Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md.
 ---
 
+在 gate 中：修改 skill、AGENTS.md 或 agent 文档属于 implement 工作；discuss/plan 只讨论写法，不落盘。
+
 Reference for writing any document an agent consumes — a skill, an `AGENTS.md`, a doc reached by a pointer. The packaging differs; the writing does not: the same levers make each one predictable — the agent taking the same _process_ every run, not producing the same output.
 
 When the document you're writing is a skill, read [`SKILL-MECHANICS.md`](SKILL-MECHANICS.md) for frontmatter, invocation choice, and router skills.

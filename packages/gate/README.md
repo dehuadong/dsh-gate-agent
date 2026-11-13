@@ -72,7 +72,7 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 | `reviewing/code-review-standalone` | 单独只读 code review | review worker；`gate-code-review` |
 | `reviewing/proposal-review` | 单独提案评审 | review worker；`gate-plan-review` |
 | `reviewing/verify-standalone` | 单独只读验收 | verify worker；`gate-user-verify` |
-| `docs` | 文档治理 | root；不调用 gate 技能 |
+| `docs` | 文档治理 | root；按项目文档规范处理 |
 | `blocked` | 冻结写入/派 worker，等待用户决定 | root；`/gate-resume` |
 | `complete` | 工作完成 | root；可重新进入 plan/implement |
 
@@ -111,7 +111,8 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 | `/gate-init` | 无 | 初始化 notes、AGENTS.md、`verify-notes`、CI、git 与基础 `.gitignore`，保持 `discuss` |
 | `/gate-enter-plan [具体工作事项或上下文语义]` | 可选 | 基于讨论共识、既有决策与用户输入进入 `orchestrating/plan` |
 | `/gate-enter-implement [具体工作事项或上下文语义]` | 可选 | 基于已确认计划或讨论后的实施说明进入 `orchestrating/implement` |
-| `/gate-docs` | 无 | 进入文档治理，按项目文档规范处理 |
+| `/gate-prd [主题或上下文语义]` | 可选 | 用户级创建/更新 PRD；仅 discuss |
+| `/gate-docs [文档范围或上下文语义]` | 可选 | 进入文档治理，按项目文档规范处理 |
 | `/gate-implement-review [具体工作事项或上下文语义]` | 可选 | 对当前改动做独立只读 code review，只输出 findings |
 | `/gate-code-verify [具体工作事项或上下文语义]` | 可选 | 对当前改动做独立只读验收（gate-user-verify） |
 | `/gate-fix-bug [具体工作事项或上下文语义]` | 可选 | 基于描述或当前上下文派 fix worker 修复已授权缺陷 |
@@ -245,7 +246,7 @@ review worker 使用 `gate-plan-review` 做 Standards/Spec/Architecture 三轴�
 /gate-docs
 ```
 
-进入 `docs` phase，不调用 gate 技能；由主代理按项目文档规范处理。
+进入 `docs` phase，由主代理按项目文档规范处理。
 
 ### 暂停、恢复与讨论
 
@@ -306,6 +307,14 @@ gate_record({
 gate_status()
 ```
 
+### gate_artifact_write
+
+按 `.agents/gate/artifact-policy.json` 写白名单 artifact；只写文件，不走普通 workspace write。支持精确文件、目录和 glob。
+
+### gate_research_dispatch
+
+root-only；在 discuss 或 `orchestrating/plan` 派 research worker。worker 只能通过 artifact policy 写 research 文档，不获得通用 workspace 写。
+
 ### Note 工具
 
 - `gate_note_write`：planning worker 写 proposed Note，或原地更新 implemented Note；通用 `write`/`edit`/`apply_patch` 和仓库写被拒绝，只读 shell 可用。
@@ -334,13 +343,190 @@ gate_status()
 
 ## 配置
 
-插件 Config：
+### artifact-policy.json
+
+discuss 和 plan 默认不允许普通文件写。`handoff`、PRD、research 等产物通过**独立的 artifact 白名单**写入，而不是放开通用 `write`。
+
+`/gate-init` 会创建：
+
+```text
+.agents/gate/artifact-policy.json
+```
+
+- 文件不存在时写入基础配置；
+- 文件已存在时**不覆盖**，保留用户内容；
+- 新建 `.gitignore` 时包含 `.scratch/`；已有 `.gitignore` 不重写。
+
+#### 基础配置
+
+```json
+{
+  "version": 1,
+  "artifacts": {
+    "handoff": {
+      "phases": ["*"],
+      "roles": ["root"],
+      "paths": [".scratch/handoff/**"]
+    },
+    "prd": {
+      "phases": ["discuss"],
+      "roles": ["root"],
+      "paths": ["docs/prd/**", ".scratch/prd/**"]
+    },
+    "research": {
+      "phases": ["discuss", "orchestrating/plan"],
+      "roles": ["root", "worker"],
+      "paths": ["docs/research/**", ".scratch/research/**"]
+    }
+  }
+}
+```
+
+#### 字段
+
+| 字段 | 说明 |
+|---|---|
+| `version` | 必须为 `1` |
+| `artifacts` | artifact kind 到规则的映射 |
+| `kind` | 内置 `handoff`、`prd`、`research`；也可以增加自定义 kind |
+| `phases` | 允许的 canonical phase/node key，或 `*` |
+| `roles` | `root` 或 `worker` |
+| `paths` | 相对 workspace 的文件、目录或 glob |
+
+#### phases
+
+使用 `gate_status` 返回的 `methodologyKey` 形式：
+
+- `discuss`
+- `docs`
+- `complete`
+- `orchestrating/plan`
+- `orchestrating/plan-review`
+- `orchestrating/plan-revise`
+- `orchestrating/implement`
+- `orchestrating/code-review`
+- `orchestrating/implement-revise`
+- `orchestrating/verify`
+- `orchestrating/note-lifecycle`
+- `orchestrating/fix-bug`
+- `reviewing/code-review-standalone`
+- `reviewing/proposal-review`
+- `reviewing/verify-standalone`
+
+`*` 表示任意**非 blocked** 状态。`blocked` 始终拒绝，即使规则写了 `*`。
+
+#### roles
+
+- `root`：主代理；
+- `worker`：任何 gate worker，包括 planning worker 和 research worker。
+
+#### paths
+
+支持四种形式：
+
+```json
+"paths": [
+  "docs/prd/current.md",
+  "docs/prd/PRD-*.md",
+  ".scratch/research/**/*.md",
+  ".scratch/handoff/**"
+]
+```
+
+| 形式 | 含义 |
+|---|---|
+| `docs/prd/current.md` | 只允许这个文件 |
+| `docs/prd/*.md` | 只允许该目录下直接文件，不递归 |
+| `.scratch/research/**/*.md` | 递归匹配 Markdown |
+| `.scratch/handoff/**` | 允许该目录下任意层级文件 |
+| `docs/prd/**` | 允许该目录下任意层级文件 |
+
+规则：
+
+- `*` 只匹配一个路径段；
+- `**` 匹配零个或多个路径段；
+- 普通路径没有通配符时按**明确文件**处理；
+- 不允许绝对路径、`..`、workspace 外路径、symlink；
+- 保留路径永远拒绝：
+  - `.agents/gate/artifact-policy.json`
+  - `.agents/notes/**`
+- 只写文件；父目录可以由工具创建，但也要通过边界检查。
+
+#### 如何按项目填写
+
+只允许一个固定 PRD 文件：
+
+```json
+{
+  "version": 1,
+  "artifacts": {
+    "prd": {
+      "phases": ["discuss"],
+      "roles": ["root"],
+      "paths": ["docs/prd/current.md"]
+    }
+  }
+}
+```
+
+允许按命名规则新建多个 PRD：
+
+```json
+{
+  "version": 1,
+  "artifacts": {
+    "prd": {
+      "phases": ["discuss"],
+      "roles": ["root"],
+      "paths": ["docs/prd/PRD-*.md"]
+    }
+  }
+}
+```
+
+允许 research 在 discuss 和 plan 写文档目录：
+
+```json
+{
+  "version": 1,
+  "artifacts": {
+    "research": {
+      "phases": ["discuss", "orchestrating/plan"],
+      "roles": ["root", "worker"],
+      "paths": ["docs/research/**/*.md", ".scratch/research/**"]
+    }
+  }
+}
+```
+
+#### 相关工具与命令
+
+- `gate_artifact_write({ kind, path, content })`：root/worker 按 policy 写文件；
+- `gate_research_dispatch({ question, purpose? })`：root-only，在 discuss/plan 派 research worker；
+- `/gate-prd [主题]`：discuss 用户命令，加载 `gate-prd` skill 并通过 artifact policy 写 PRD；
+- `gate-handoff`：用户级 skill，产物写入 `.scratch/handoff/`。
+
+普通 `write`/`edit`/`apply_patch`/写型 shell 不受 artifact policy 放行，仍按 phase/role 矩阵处理。
+
+#### 常见失败
+
+| 错误 | 原因 |
+|---|---|
+| `artifact-policy-invalid` | policy 缺失、JSON 无效、version 不是 1、字段非法 |
+| `artifact-denied` | kind 不存在、phase 不匹配、role 不匹配、path 不在白名单、blocked、保留路径、越界或 symlink |
+| `subagents-unavailable` | research dispatch 时 `ctx.subagents` 不可用 |
+| `wrong-phase` | research dispatch 不在 discuss 或 `orchestrating/plan` |
+
+修改 policy 后不需要重启 DSH；每次 artifact 写入都会重新读取文件。
+
+### 插件 Config
 
 ```json
 { "reviewLimit": 5 }
 ```
 
 `reviewLimit` 是每个 review 节点的最大轮次；默认 5，范围 1–20。达到上限仍有 findings 时进入 blocked。
+
 
 ## 使用边界
 

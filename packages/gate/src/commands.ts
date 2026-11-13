@@ -4,10 +4,12 @@ import type { GateDeps } from './runtime/deps.js'
 import { enterPhase } from './runtime/gate.js'
 import { statusText } from './protocol.js'
 import { provisionNotes, provisionCi, provisionProjectScripts, provisionGit } from './notes/provision.js'
+import { provisionArtifactPolicy } from './artifacts/policy.js'
 import { normalizeState } from './state.js'
 import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { resolveNodeBinary } from './notes/fs.js'
-import { NOTES_SKILL_DIR } from './paths.js'
+import { NOTES_SKILL_DIR, SKILLS } from './paths.js'
 import { runNotesScripts } from './notes/scripts.js'
 import { rootAgentOf } from './runtime/session.js'
 import type { Phase } from './state.js'
@@ -37,16 +39,18 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       let projectScripts
       let projectCi
       let projectGit
+      let artifactPolicy
       try {
         provisioned = provisionNotes(root)
+        artifactPolicy = provisionArtifactPolicy(root)
         projectCi = provisionCi(root)
         projectScripts = provisionProjectScripts(root)
         projectGit = provisionGit(root)
       } catch (error) {
         return { kind: 'error', text: `notes 初始化失败：${error instanceof Error ? error.message : String(error)}` }
       }
-      wake(invocation, store.read(root, invocation.agent), `Gate 已初始化：${root}（phase=discuss），notes 已初始化为 ${provisioned.notes}，AGENTS.md 已更新，verify-notes 已配置为 ${projectScripts.command}，CI 已配置为 ${projectCi.workflow}，git：${projectGit.git}${projectGit.gitError === null ? '' : `（${projectGit.gitError}）`}，ignore：${projectGit.ignore}。`, 'gate-init')
-      return { kind: 'success', text: `Gate 已初始化：${root}（phase=discuss）\nnotes：${provisioned.notes}\nAGENTS：${provisioned.agents}\nverify-notes：${projectScripts.command}\nCI：${projectCi.workflow}\ngit：${projectGit.git}${projectGit.gitError === null ? '' : `（${projectGit.gitError}）`}\nignore：${projectGit.ignore}` }
+      wake(invocation, store.read(root, invocation.agent), `Gate 已初始化：${root}（phase=discuss），notes 已初始化为 ${provisioned.notes}，artifact policy 为 ${artifactPolicy.path}（${artifactPolicy.status}），AGENTS.md 已更新，verify-notes 已配置为 ${projectScripts.command}，CI 已配置为 ${projectCi.workflow}，git：${projectGit.git}${projectGit.gitError === null ? '' : `（${projectGit.gitError}）`}，ignore：${projectGit.ignore}。`, 'gate-init')
+      return { kind: 'success', text: `Gate 已初始化：${root}（phase=discuss）\nnotes：${provisioned.notes}\nartifact policy：${artifactPolicy.path}（${artifactPolicy.status}）\nAGENTS：${provisioned.agents}\nverify-notes：${projectScripts.command}\nCI：${projectCi.workflow}\ngit：${projectGit.git}${projectGit.gitError === null ? '' : `（${projectGit.gitError}）`}\nignore：${projectGit.ignore}` }
     })
     command('gate-enter-plan', async (invocation: any) => {
       const result = enterPhase(ctx, invocation.agent, 'plan', reviewLimit, store, undefined)
@@ -78,6 +82,16 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       wake(invocation, result.state!, `Gate 已进入 implement：${result.state!.task ?? ''}${direct ? '（直接实施，未走 planning）' : ''}。用户说明：${constraints}。`, 'gate-enter-implement')
       return { kind: 'success', text: `进入 implement：${result.state!.task}${direct ? '（直接实施）' : ''}` }
     })
+    command('gate-prd', async (invocation: any) => {
+      const gate = resolveGate(ctx, invocation.agent)
+      const state = store.read(gate.root, invocation.agent)
+      if (state.phase !== 'discuss') return { kind: 'error', text: 'gate-prd 只在 discuss 阶段可用' }
+      const topic = String(invocation.rawInput ?? '').trim() || '当前讨论'
+      let skill = ''
+      try { skill = readFileSync(path.join(SKILLS, 'gate-prd', 'SKILL.md'), 'utf8') } catch { /* command still reports the requested action */ }
+      wake(invocation, state, ['请按 gate-prd 技能创建或更新 PRD。', '主题/上下文：' + topic, skill].filter(Boolean).join('\n\n'), 'gate-prd')
+      return { kind: 'success', text: '已请求 PRD：' + topic }
+    })
     command('gate-fix-bug', async (invocation: any) => {
       const brief = String(invocation.rawInput ?? '').trim()
       const gate = resolveGate(ctx, invocation.agent)
@@ -92,14 +106,15 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       return { kind: 'success', text: `进入 fix-bug：${scope}` }
     })
     command('gate-docs', async (invocation: any) => {
+      const scope = String(invocation.rawInput ?? '').trim() || '文档治理'
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
       if (state.phase !== 'discuss' && state.phase !== 'complete') return { kind: 'error', text: `当前 phase 是 ${state.phase}` }
       if (state.work === 'blocked' || state.blockReason !== null) return { kind: 'error', text: `当前被 blocked：${state.blockReason ?? 'unknown'}；先 /gate-resume` }
-      state.phase = 'docs'; state.task = '文档治理'; state.work = 'active'; state.blockReason = null; state.blockedFrom = null; state.node = null
+      state.phase = 'docs'; state.task = scope; state.work = 'active'; state.blockReason = null; state.blockedFrom = null; state.node = null
       store.write(gate.root, invocation.agent, state)
-      wake(invocation, state, 'Gate 已进入 docs。', 'gate-docs')
-      return { kind: 'success', text: '进入 docs：文档治理' }
+      wake(invocation, state, `Gate 已进入 docs：${scope}。`, 'gate-docs')
+      return { kind: 'success', text: `进入 docs：${scope}` }
     })
     command('gate-implement-review', async (invocation: any) => {
       const brief = String(invocation.rawInput ?? '').trim()

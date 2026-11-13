@@ -6,6 +6,10 @@ argument-hint: "项目路径，或要覆盖的功能 / bug"
 
 # Playwright E2E 配置
 
+在 gate 中：模型启用本技能时走 implement；用户在 discuss 调用时只讨论方案，写 config/spec/AGENTS 与安装依赖在 implement 进行。
+
+
+
 分工是固定的：**Agent 写 spec，Playwright runner 跑 spec。** 提需求的这一轮里，Agent 不打开浏览器一格格点页面——那是它最贵、最慢、最不可回归的用法；它只写 Node.js + Playwright 脚本，然后跑命令。脚本一旦落盘，「这个功能对不对」就从一轮轮截图变成一条几秒钟、几乎不花 token、随时可重跑的断言。
 
 这个 skill 一次跑完，产出三样**落盘**的东西：可跑的 `playwright.config.ts`、项目里长期生效的测试规则、覆盖目标行为的 spec。之后日常由项目里的规则接管，换项目、换技术栈、或规则要改的时候再调它。

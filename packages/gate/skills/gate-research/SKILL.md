@@ -4,11 +4,11 @@ description: Investigate a question against high-trust primary sources and captu
 user-invocable: false
 ---
 
-Spin up a **background agent** to do the research, so you keep working while it reads.
+调用 `gate_research_dispatch({ question, purpose })` 派 research worker，并等待结果。
 
-Its job:
+worker 的职责：
 
 1. Investigate the question against **primary sources** — official docs, source code, specs, first-party APIs — not a secondary write-up of them. Follow every claim back to the source that owns it.
 2. Write the findings to a single Markdown file, citing each claim's source.
-3. Save it where the repo already keeps such notes; match the existing convention, and if there is none, put it somewhere sensible and say where.
+3. Save it with `gate_artifact_write({ kind: 'research', path, content })`；优先项目文档位置，否则 `.scratch/research/`。不要使用通用 `write`。
 
