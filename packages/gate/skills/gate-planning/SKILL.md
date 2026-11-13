@@ -64,8 +64,6 @@ user-invocable: false
 
 设计定稿遵循 技术设计规则（[rfc.md](./rfc.md) ） 的合同稳定性与评审条件。Note 的 proposed/implemented 表示交付生命周期，不代替评审和批准证据。
 
-使用项目既有领域语言和适用架构约束。领域术语与模型变化使用 `gate-domain-modeling`；需要为架构决定单独建档时，使用 `adr` 的准入条件判断，在相关 Agent Note 中记录决定。
-
 ### 决定权限
 
 在已同意的产品合同、既有架构和项目约束内，自主解决普通技术选择。
