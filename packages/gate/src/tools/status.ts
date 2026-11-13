@@ -2,6 +2,7 @@ import type { GateDeps } from '../runtime/deps.js'
 import { procedureFor, procedureResultText, renderProcedureResult, statusText } from '../protocol.js'
 import { rootAgentOf, resolveGate } from '../runtime/session.js'
 import { accessFor, accessText } from '../access.js'
+import { nextCommandsFor, nextCommandsText } from '../command-next.js'
 export function registerStatus(ctx: any, deps: GateDeps) {
   const { store, reviewLimit, wake } = deps
   ctx.tools.register({
@@ -26,8 +27,10 @@ export function registerStatus(ctx: any, deps: GateDeps) {
       const worker = root?.id !== exec.agent?.id
       const access = accessFor(state, worker)
       if (worker) {
-        return { ok: true, procedure: null, method: null, access, text: [accessText(access), statusText(state, reviewLimit)].join('\n\n') }
+        return { ok: true, procedure: null, method: null, access, nextCommands: [], text: [accessText(access), statusText(state, reviewLimit)].join('\n\n') }
       }
+      const nextCommands = nextCommandsFor(state)
+      const nextText = nextCommandsText(nextCommands)
       const procedure = procedureFor(state, { reviewLimit })
       const includeRounds = !procedure.hasRounds
       return {
@@ -35,7 +38,8 @@ export function registerStatus(ctx: any, deps: GateDeps) {
         procedure,
         method: procedure.method,
         access,
-        text: procedureResultText(procedure, [statusText(state, reviewLimit, { includeRounds }), accessText(access)].join('\n\n')),
+        nextCommands,
+        text: procedureResultText(procedure, [statusText(state, reviewLimit, { includeRounds }), nextText, accessText(access)].filter(Boolean).join('\n\n')),
       }
     },
   })

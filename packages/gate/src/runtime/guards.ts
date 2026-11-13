@@ -64,7 +64,7 @@ export function targetList(name: string, args: any) {
     .map(match => String(match[1] ?? '').trim())
 }
 
-export const GATE_FROZEN_REASON = 'Gate 已冻结：先 /gate-resume 或 /gate-return-discuss'
+export const GATE_FROZEN_REASON = 'Gate 已冻结：先 /gate-resume'
 
 function fileWriteDenied(state: GateState, effective: { worker: boolean }) {
   if (state.phase === 'blocked') return GATE_FROZEN_REASON

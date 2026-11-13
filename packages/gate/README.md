@@ -73,7 +73,7 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 | `reviewing/proposal-review` | 单独提案评审 | review worker；`gate-plan-review` |
 | `reviewing/verify-standalone` | 单独只读验收 | verify worker；`gate-user-verify` |
 | `docs` | 文档治理 | root；不调用 gate 技能 |
-| `blocked` | 冻结写入/派 worker，等待用户决定 | root；`/gate-resume` 或 `/gate-return-discuss` |
+| `blocked` | 冻结写入/派 worker，等待用户决定 | root；`/gate-resume` |
 | `complete` | 工作完成 | root；可重新进入 plan/implement |
 
 进入阶段不等于执行。主代理按当前 procedure 加载技能、派 worker，再用 `gate_record` 推进节点。
@@ -109,23 +109,23 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 | 命令 | 参数 | 作用 |
 |---|---|---|
 | `/gate-init` | 无 | 初始化 notes、AGENTS.md、`verify-notes`、CI、git 与基础 `.gitignore`，保持 `discuss` |
-| `/gate-enter-plan [简单需求]` | 可选 | 进入 `orchestrating/plan` |
-| `/gate-enter-implement [简单说明]` | 可选 | 进入 `orchestrating/implement`；复用已通过的 task，或直接用简述 |
-| `/gate-docs` | 无 | 文档治理，不调用技能 |
-| `/gate-implement-review [范围]` | 可选 | 单独只读 code review，只输出 findings |
-| `/gate-code-verify [范围]` | 可选 | 单独只读验收；子代理使用 `gate-user-verify` |
-| `/gate-fix-bug [缺陷简述]` | 可选 | 派 fix worker 修复已授权缺陷，完成后回 discuss |
-| `/gate-propose-review [提案]` | 可选 | 单独提案评审，走 `gate-plan-review` 三轴 |
+| `/gate-enter-plan [具体工作事项或上下文语义]` | 可选 | 基于讨论共识、既有决策与用户输入进入 `orchestrating/plan` |
+| `/gate-enter-implement [具体工作事项或上下文语义]` | 可选 | 基于已确认计划或讨论后的实施说明进入 `orchestrating/implement` |
+| `/gate-docs` | 无 | 进入文档治理，按项目文档规范处理 |
+| `/gate-implement-review [具体工作事项或上下文语义]` | 可选 | 对当前改动做独立只读 code review，只输出 findings |
+| `/gate-code-verify [具体工作事项或上下文语义]` | 可选 | 对当前改动做独立只读验收（gate-user-verify） |
+| `/gate-fix-bug [具体工作事项或上下文语义]` | 可选 | 基于描述或当前上下文派 fix worker 修复已授权缺陷 |
+| `/gate-propose-review [具体工作事项或上下文语义]` | 可选 | 对提案做独立只读三轴评审 |
 | `/gate-note-verify` | 无 | 只读检查 notes tree/format/lifecycle/archived |
 | `/gate-note-archive <note> [--superseded-by <new>]` | 必需 Note 路径 | 归档 implemented Note，写 Archived、移动、封印、报告入站链接 |
 | `/gate-note-board [输出路径] [标题]` | 可选 | 生成决策看板 `board.html` |
 | `/gate-note-seal` | 无 | 只给 `archived/` 中已有 Note 补写 `manifest.json` 的 SHA-256 封印 |
 | `/gate-block [原因]` | 可选 | 手动暂停，保留当前节点 |
 | `/gate-resume` | 无 | 解冻 blocked，回到 block 前的节点；轮次耗尽回 discuss |
-| `/gate-return-discuss` | 无 | 回到 discuss |
-| `/gate-status` | 无 | 只读显示当前 phase/node 与 procedure |
+| `/gate-return-discuss` | 无 | 放弃当前节点，回到 discuss |
+| `/gate-status` | 无 | 只读显示当前 phase/node、procedure、access 与下一步命令 |
 
-直接 implement（`/gate-enter-implement [简单说明]` 或 `gate_start_phase({node:'implement',brief})`）会自动标记 `mechanical`，跳过 Note lifecycle；不需要 `mechanical:` 前缀。plan/plan-revise 手动选择 `mechanical` 时也不要求前缀，只需 `notePaths: []`。
+直接 implement（`/gate-enter-implement [具体工作事项或上下文语义]` 或 `gate_start_phase({node:'implement',brief})`）会自动标记 `mechanical`，跳过 Note lifecycle；不需要 `mechanical:` 前缀。plan/plan-revise 手动选择 `mechanical` 时也不要求前缀，只需 `notePaths: []`。
 
 离开 discuss 的授权可来自对话（包括要求用户再输入 slash command）或 `ask_user_question`；明确授权后，主代理可调用 `gate_start_phase({node:'plan'|'implement', brief})`。
 
@@ -190,7 +190,7 @@ gate 不自动 `git add`/`git commit`；完成 note-lifecycle 后由用户或主
 ### 单独 code review
 
 ```text
-/gate-implement-review [范围]
+/gate-implement-review [具体工作事项或上下文语义]
 ```
 
 只读 review，不修改被评审对象；findings 直接输出。
@@ -198,7 +198,7 @@ gate 不自动 `git add`/`git commit`；完成 note-lifecycle 后由用户或主
 ### 单独验收
 
 ```text
-/gate-code-verify [范围]
+/gate-code-verify [具体工作事项或上下文语义]
 ```
 
 主代理派只读 verify worker，使用 `gate-user-verify`；PASS 后 `gate_record({node:'verify-standalone', verification, workerSessionIds})` 回 discuss。
@@ -252,16 +252,19 @@ review worker 使用 `gate-plan-review` 做 Standards/Spec/Architecture 三轴�
 ```text
 /gate-block 等待产品决定
 /gate-resume
-/gate-return-discuss
 /gate-status
 ```
 
 - `/gate-block`：保留当前节点，冻结写入与 worker 派发，对话仍可继续。
-- `/gate-resume`：回到 block 前的节点；review 轮次耗尽时回 discuss。
-- `/gate-return-discuss`：放弃当前节点，回 discuss。
+- `/gate-resume`：唯一的 blocked 恢复入口；回到 block 前的节点，review 轮次耗尽时回 discuss。
+- `/gate-return-discuss`：放弃当前节点回 discuss；blocked 时不可直接用，先 `/gate-resume`。
 - `/gate-status`：只读查看当前 phase/node 和 procedure。
 
 ## 工具
+
+### gate_help
+
+只读，root-only。列出全部 `/gate-*` 命令、`gate_*` 工具用途和当前 phase/node，并说明命令由用户执行、工具由模型调用。不确定命令名或工具用途时使用。
 
 ### gate_start_phase
 
@@ -297,7 +300,7 @@ gate_record({
 
 ### gate_status
 
-只读，root 和 worker 可调用。root 返回当前 procedure 与状态；worker 只返回状态，不返回 root procedure。
+只读，root 和 worker 可调用。root 返回当前 procedure、状态和 nextCommands；worker 只返回状态，不返回 root procedure。
 
 ```text
 gate_status()

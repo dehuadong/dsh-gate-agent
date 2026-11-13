@@ -13,17 +13,23 @@ import { rootAgentOf } from './runtime/session.js'
 import type { Phase } from './state.js'
 import { accessFor, accessText } from './access.js'
 import { MECHANICAL_DECISION } from './note-decisions.js'
+import { commandSpec } from './command-catalog.js'
+import { nextCommandsFor, nextCommandsText } from './command-next.js'
 
 export function registerCommands(ctx: any, deps: GateDeps) {
   const { store, reviewLimit, wake } = deps
   ctx.inject(['commands'], (scope: any) => {
-    const register = (name: any, description: any, handler: any, input: any = { hint: '<工作项>' }) => scope.commands.register({
-      name,
-      description,
-      ...(input === null ? {} : { input }),
-      handler,
-    })
-    register('gate-init', '初始化 notes、AGENTS.md、verify-notes 与 GitHub Actions CI', async (invocation: any) => {
+    const command = (name: string, handler: any) => {
+      const spec = commandSpec(name)
+      if (spec === undefined) throw new Error(`unknown gate command: ${name}`)
+      scope.commands.register({
+        name: spec.name,
+        description: spec.description,
+        ...(spec.hint === null ? {} : { input: { hint: spec.hint } }),
+        handler,
+      })
+    }
+    command('gate-init', async (invocation: any) => {
       const workspace = workspaceBoundary(ctx, invocation.agent)
       if (workspace === undefined) return { kind: 'error', text: '无法确定当前会话工作区' }
       const root = path.resolve(workspace)
@@ -41,15 +47,15 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       }
       wake(invocation, store.read(root, invocation.agent), `Gate 已初始化：${root}（phase=discuss），notes 已初始化为 ${provisioned.notes}，AGENTS.md 已更新，verify-notes 已配置为 ${projectScripts.command}，CI 已配置为 ${projectCi.workflow}，git：${projectGit.git}${projectGit.gitError === null ? '' : `（${projectGit.gitError}）`}，ignore：${projectGit.ignore}。`, 'gate-init')
       return { kind: 'success', text: `Gate 已初始化：${root}（phase=discuss）\nnotes：${provisioned.notes}\nAGENTS：${provisioned.agents}\nverify-notes：${projectScripts.command}\nCI：${projectCi.workflow}\ngit：${projectGit.git}${projectGit.gitError === null ? '' : `（${projectGit.gitError}）`}\nignore：${projectGit.ignore}` }
-    }, null)
-    register('gate-enter-plan', '按用户简述进入 planning', async (invocation: any) => {
+    })
+    command('gate-enter-plan', async (invocation: any) => {
       const result = enterPhase(ctx, invocation.agent, 'plan', reviewLimit, store, undefined)
       if (result.kind === 'error') return result
       const brief = String(invocation.rawInput ?? '').trim()
       wake(invocation, result.state!, `Gate 已进入 plan。用户规划输入：${brief === '' ? '（未提供额外输入）' : brief}。`, 'gate-enter-plan')
       return { kind: 'success', text: '进入 planning。' }
-    }, { hint: '[简单需求]' })
-    register('gate-enter-implement', '从已确认规划或用户简述进入 implementation', async (invocation: any) => {
+    })
+    command('gate-enter-implement', async (invocation: any) => {
       const brief = String(invocation.rawInput ?? '').trim()
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
@@ -71,8 +77,8 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       const constraints = direct ? '（本句即工作项简述）' : (brief === '' ? '（无额外约束）' : brief)
       wake(invocation, result.state!, `Gate 已进入 implement：${result.state!.task ?? ''}${direct ? '（直接实施，未走 planning）' : ''}。用户说明：${constraints}。`, 'gate-enter-implement')
       return { kind: 'success', text: `进入 implement：${result.state!.task}${direct ? '（直接实施）' : ''}` }
-    }, { hint: '[简单说明]' })
-    register('gate-fix-bug', '为已授权的实现缺陷派发 fix worker', async (invocation: any) => {
+    })
+    command('gate-fix-bug', async (invocation: any) => {
       const brief = String(invocation.rawInput ?? '').trim()
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
@@ -84,8 +90,8 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       store.write(gate.root, invocation.agent, state)
       wake(invocation, state, `Gate 已进入 fix-bug：${scope}。`, 'gate-fix-bug')
       return { kind: 'success', text: `进入 fix-bug：${scope}` }
-    }, { hint: '[缺陷简述]' })
-    register('gate-docs', '开始文档治理', async (invocation: any) => {
+    })
+    command('gate-docs', async (invocation: any) => {
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
       if (state.phase !== 'discuss' && state.phase !== 'complete') return { kind: 'error', text: `当前 phase 是 ${state.phase}` }
@@ -94,8 +100,8 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       store.write(gate.root, invocation.agent, state)
       wake(invocation, state, 'Gate 已进入 docs。', 'gate-docs')
       return { kind: 'success', text: '进入 docs：文档治理' }
-    }, null)
-    register('gate-implement-review', '开始独立只读 code review', async (invocation: any) => {
+    })
+    command('gate-implement-review', async (invocation: any) => {
       const brief = String(invocation.rawInput ?? '').trim()
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
@@ -107,7 +113,7 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       wake(invocation, state, `Gate 已进入只读 code review：${scope}。`, 'gate-implement-review')
       return { kind: 'success', text: `进入只读 code review：${scope}` }
     })
-    register('gate-code-verify', '开始独立只读验收', async (invocation: any) => {
+    command('gate-code-verify', async (invocation: any) => {
       const brief = String(invocation.rawInput ?? '').trim()
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
@@ -119,7 +125,7 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       wake(invocation, state, `Gate 已进入独立验收：${scope}。`, 'gate-code-verify')
       return { kind: 'success', text: `进入独立验收：${scope}` }
     })
-    register('gate-propose-review', '开始独立提案评审', async (invocation: any) => {
+    command('gate-propose-review', async (invocation: any) => {
       const brief = String(invocation.rawInput ?? '').trim()
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
@@ -131,7 +137,7 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       wake(invocation, state, `Gate 已进入提案评审：${scope}。`, 'gate-propose-review')
       return { kind: 'success', text: `进入提案评审：${scope}` }
     })
-    register('gate-block', '手动暂停：保留当前节点并停止写入/派 worker；对话仍可继续', async (invocation: any) => {
+    command('gate-block', async (invocation: any) => {
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
       if (state.phase === 'blocked') return { kind: 'success', text: '已经是 blocked' }
@@ -139,9 +145,9 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       state.phase = 'blocked'; state.work = 'blocked'; state.node = null
       state.blockReason = String(invocation.rawInput ?? '').trim() || 'user-blocked'
       store.write(gate.root, invocation.agent, state)
-      return { kind: 'success', text: `已暂停：${state.blockReason}\n解冻后：${state.blockedFrom?.phase ?? 'discuss'}${state.blockedFrom?.node === null || state.blockedFrom?.node === undefined ? '' : ` / ${state.blockedFrom.node}`}\n同一事项：/gate-resume 回到该节点；改变方案：/gate-return-discuss。` }
-    }, { hint: '[原因]' })
-    register('gate-resume', '解冻 blocked：回到 block 前的节点；轮次耗尽回 discuss', async (invocation: any) => {
+      return { kind: 'success', text: `已暂停：${state.blockReason}\n解冻后：${state.blockedFrom?.phase ?? 'discuss'}${state.blockedFrom?.node === null || state.blockedFrom?.node === undefined ? '' : ` / ${state.blockedFrom.node}`}\n同一事项：/gate-resume 回到该节点；改变方案：先 /gate-resume，再 /gate-return-discuss。` }
+    })
+    command('gate-resume', async (invocation: any) => {
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
       if (state.phase !== 'blocked') return { kind: 'error', text: '当前不是 blocked' }
@@ -155,8 +161,8 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       }
       const exhausted = reason === 'plan-review-rounds-exhausted' || reason === 'code-review-rounds-exhausted'
       return { kind: 'success', text: `已解除 blocked：${state.phase}${state.node === null ? '' : ` / ${state.node}`}${exhausted ? '\nreview 轮次已耗尽，不能继续原节点；用 /gate-enter-plan 重新规划。' : '\n已回到暂停前节点，按当前 procedure 继续。'}` }
-    }, null)
-    register('gate-return-discuss', '回到 discuss', async (invocation: any) => {
+    })
+    command('gate-return-discuss', async (invocation: any) => {
       const gate = resolveGate(ctx, invocation.agent)
       const state = store.read(gate.root, invocation.agent)
       if (state.phase === 'blocked') return { kind: 'error', text: `当前 blocked：${state.blockReason ?? 'unknown'}；先 /gate-resume` }
@@ -174,22 +180,23 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       state.pending = {}
       store.write(gate.root, invocation.agent, state)
       return { kind: 'success', text: '已回到 discuss' }
-    }, null)
-    register('gate-status', '查看当前 gate 状态', async (invocation: any) => {
+    })
+    command('gate-status', async (invocation: any) => {
       const gate = resolveGate(ctx, invocation.agent)
       const root = rootAgentOf(ctx, invocation.agent)
       const state = store.read(gate.root, root)
       const worker = root?.id !== invocation.agent?.id
-      return { kind: 'success', text: [accessText(accessFor(state, worker)), statusText(state, reviewLimit)].join('\n\n') }
-    }, null)
-    register('gate-note-verify', '只读检查 notes tree/format/lifecycle/archived', async (invocation: any) => {
+      const next = worker ? '' : nextCommandsText(nextCommandsFor(state))
+      return { kind: 'success', text: [accessText(accessFor(state, worker)), statusText(state, reviewLimit), next].filter(Boolean).join('\n\n') }
+    })
+    command('gate-note-verify', async (invocation: any) => {
       const gate = resolveGate(ctx, invocation.agent)
       const check = runNotesScripts(gate.root)
       return check.ok
         ? { kind: 'success', text: check.results.map(item => `${item.name}: ok`).join('\n') }
         : { kind: 'error', text: `notes 校验失败：\n${JSON.stringify(check.results, null, 2)}` }
-    }, null)
-    register('gate-note-archive', '将 implemented Note 归档到 archived/：加 Archived、移动、封印并报告入站链接', async (invocation: any) => {
+    })
+    command('gate-note-archive', async (invocation: any) => {
       const gate = resolveGate(ctx, invocation.agent)
       const raw = String(invocation.rawInput ?? '').trim()
       const args = raw === '' ? [] : raw.split(/\s+/u)
@@ -203,8 +210,8 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       } catch (error) {
         return { kind: 'error', text: String((error as any)?.stderr ?? (error as any)?.message ?? error).trim() }
       }
-    }, { hint: '<implemented-note> [--superseded-by <new-note>]' })
-    register('gate-note-board', '生成决策看板 board.html（轻量模式，连接本地 notes 目录）', async (invocation: any) => {
+    })
+    command('gate-note-board', async (invocation: any) => {
       const gate = resolveGate(ctx, invocation.agent)
       const raw = String(invocation.rawInput ?? '').trim()
       const args = raw === '' ? [] : raw.split(/\s+/u)
@@ -219,8 +226,8 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       } catch (error) {
         return { kind: 'error', text: String((error as any)?.stderr ?? (error as any)?.message ?? error).trim() }
       }
-    }, { hint: '[输出路径] [标题]' })
-    register('gate-note-seal', '只给 archived/ 中已有 Note 补写 manifest.json 的 SHA-256 封印；不归档、不改 Note 内容', async (invocation: any) => {
+    })
+    command('gate-note-seal', async (invocation: any) => {
       const gate = resolveGate(ctx, invocation.agent)
       const node = resolveNodeBinary()
       if (node === undefined) return { kind: 'error', text: 'notes-runtime-unavailable' }
@@ -231,6 +238,6 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       } catch (error) {
         return { kind: 'error', text: String((error as any)?.stderr ?? (error as any)?.message ?? error).trim() }
       }
-    }, null)
+    })
   })
 }

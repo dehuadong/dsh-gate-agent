@@ -254,59 +254,72 @@
         "type": "object",
         "additionalProperties": true
       }
+    },
+    {
+      "name": "gate_help",
+      "description": "只读列出 gate 命令、工具用途和当前 phase/node。仅 root agent；只在不确定命令名/工具用途时使用。",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      }
     }
   ],
   "commands": [
     {
       "name": "gate-init",
-      "description": "初始化 notes、AGENTS.md、verify-notes 与 GitHub Actions CI",
+      "description": "初始化 notes、AGENTS.md、verify-notes、CI、git 与基础 .gitignore",
       "input": null
     },
     {
       "name": "gate-enter-plan",
-      "description": "按用户简述进入 planning",
+      "description": "基于讨论共识、既有决策与用户输入进入 planning",
       "input": {
-        "hint": "[简单需求]"
+        "hint": "<具体工作事项或上下文语义>"
       }
     },
     {
       "name": "gate-enter-implement",
-      "description": "从已确认规划或用户简述进入 implementation",
+      "description": "基于已确认计划或讨论后的实施说明进入 implementation",
       "input": {
-        "hint": "[简单说明]"
+        "hint": "<具体工作事项或上下文语义>"
       }
     },
     {
       "name": "gate-fix-bug",
-      "description": "为已授权的实现缺陷派发 fix worker",
+      "description": "为已授权缺陷派发 fix worker，基于描述或当前上下文修复",
       "input": {
-        "hint": "[缺陷简述]"
+        "hint": "<具体工作事项或上下文语义>"
       }
     },
     {
       "name": "gate-docs",
-      "description": "开始文档治理",
+      "description": "进入文档治理，按项目文档规范处理",
       "input": null
     },
     {
       "name": "gate-implement-review",
-      "description": "开始独立只读 code review",
+      "description": "对当前改动做独立只读 code review",
       "input": {
-        "hint": "<工作项>"
+        "hint": "<具体工作事项或上下文语义>"
       }
     },
     {
       "name": "gate-code-verify",
-      "description": "开始独立只读验收",
+      "description": "对当前改动做独立只读验收（gate-user-verify）",
       "input": {
-        "hint": "<工作项>"
+        "hint": "<具体工作事项或上下文语义>"
       }
     },
     {
       "name": "gate-propose-review",
-      "description": "开始独立提案评审",
+      "description": "对提案做独立只读三轴评审",
       "input": {
-        "hint": "<工作项>"
+        "hint": "<具体工作事项或上下文语义>"
       }
     },
     {
@@ -323,12 +336,12 @@
     },
     {
       "name": "gate-return-discuss",
-      "description": "回到 discuss",
+      "description": "放弃当前节点，回到 discuss",
       "input": null
     },
     {
       "name": "gate-status",
-      "description": "查看当前 gate 状态",
+      "description": "查看当前 phase/node、procedure、access 与下一步命令",
       "input": null
     },
     {

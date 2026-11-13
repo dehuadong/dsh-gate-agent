@@ -158,15 +158,15 @@ export const NODE_PROCEDURES: Record<string, string> = {
 }
 
 export const GATE_METHODOLOGY = `## Gate 方法论
-本段只定义各阶段的工作方法与质量标准。当前 phase/node、procedure 和要加载的技能来自最近一次 gate_status、gate_record 或命令结果；只执行当前 phase 的 procedure，其他阶段的方法论仅作背景参考；compaction 后必须重新获取 procedure，并确认技能内容是否仍在上下文：首次需要时加载，已在上文则复用，不要因 procedure 更新重复加载。
+本段只定义各阶段的工作方法与质量标准。当前 phase/node、procedure 和要加载的技能来自最近一次 gate_status、gate_record 或命令结果；只执行当前 phase 的 procedure，其他阶段的方法论仅作背景参考；compaction 后必须重新获取 procedure，并确认技能内容是否仍在上下文：首次需要时加载，已在上文则复用，不要因 procedure 更新重复加载。不确定有哪些 /gate-* 命令或工具用途时，调用只读 gate_help。
 
 ${DISCUSS_ORCHESTRATION}
 
 ## plan
-把用户简述收敛成可实施计划与 proposed Note；计划必须写清范围、验收、备选与风险。Plan Review 独立判断；findings 先记录再 revise；review 通过后回 discuss。不要在规划里开始实现。
+把讨论共识、既有决策与用户需求收敛成可实施计划与 proposed Note；计划必须写清范围、验收、备选与风险。Plan Review 独立判断；findings 先记录再 revise；review 通过后回 discuss。不要在规划里开始实现。
 
 ## implement
-按已确认的计划实施并完成测试；实现后做独立 review，再用可执行证据 verify；最后完成 Note lifecycle。不扩大范围，不在实现中重新规划。
+按已确认的计划或讨论后的实施说明实施并完成测试；实现后做独立 review，再用可执行证据 verify；最后完成 Note lifecycle。不扩大范围，不在实现中重新规划。
 
 ## code-review
 独立判断改动是否满足合同与标准；只报 findings，不修代码、不替代 verify；findings 记录后再进入 revise。
@@ -193,7 +193,7 @@ ${DISCUSS_ORCHESTRATION}
 只读独立验收：不改代码、不替代 implement，只输出 PASS/FAIL 与证据判断。
 
 ## blocked / complete
-blocked 表示冻结：等待 /gate-resume 或 /gate-return-discuss。complete 表示当前任务完成，新任务需要重新授权。`
+blocked 表示冻结：等待 /gate-resume。complete 表示当前任务完成，新任务需要重新授权。`
 
 /**
  * Procedure variant for the current phase/node. The root prompt is static; this
@@ -221,7 +221,7 @@ export function procedureFor(state: GateState, { reviewLimit = DEFAULT_REVIEW_LI
   if (variant === 'discuss') {
     text = 'discuss 不派 worker；文件默认只读，提交已有改动不受影响；用户授权后调用 gate_start_phase 进入 plan/implement。'
   } else if (variant === 'blocked') {
-    text = `Gate 已冻结：${state.blockReason ?? 'unknown'}；解冻后回 ${state.blockedFrom?.phase ?? 'discuss'} / ${state.blockedFrom?.node ?? '无'}；用 /gate-resume 或 /gate-return-discuss。`
+    text = `Gate 已冻结：${state.blockReason ?? 'unknown'}；解冻后回 ${state.blockedFrom?.phase ?? 'discuss'} / ${state.blockedFrom?.node ?? '无'}；用 /gate-resume。`
   } else if (variant === 'complete') {
     text = 'Gate 已完成；新任务需要重新授权。'
   } else if (variant === 'docs') {
