@@ -7,10 +7,6 @@ import { resolveGate } from './session.js'
 import { resolveNotesSkill } from '../notes/fs.js'
 import { accessFor, accessText } from '../access.js'
 
-export function isMechanical(task: string | null | undefined) {
-  return /^mechanical:/iu.test(String(task ?? '').trim())
-}
-
 
 export function enterPhase(ctx: any, agent: any, node: string, reviewLimit: number, store: StateRuntime, current: GateState | undefined) {
   const gate = resolveGate(ctx, agent)

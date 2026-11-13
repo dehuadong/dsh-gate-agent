@@ -24,7 +24,7 @@ export const PLAN_ORCHESTRATION = `## /gate-enter-plan 编排
 先按 write-agent-notes §3 检索历史，再按 §4 判定归属与 class；用 gate_note_write 写 Note，路径与 class 必须一致。发现旧 implemented Note 被新决定完全取代时，记下归档候选；新 Note 尚未落地前不要归档。
 把工作项、约束和提炼后的规划方法写进 subagent prompt；planning worker 不加载 gate 技能。
 完成后调 gate_record({node:'plan', task, notePaths, noteDecision, noteSearch, workerSessionIds})。
-notePaths 是 [{path,class,lifecycle}] 数组；path 接受 .agents/notes/<lifecycle>/<class>/...、<lifecycle>/<class>/... 或 <class>/...，gate_record 归一为完整路径；mechanical:<说明> 用 noteDecision:'mechanical' 且 notePaths 为空。
+notePaths 是 [{path,class,lifecycle}] 数组；path 接受 .agents/notes/<lifecycle>/<class>/...、<lifecycle>/<class>/... 或 <class>/...，gate_record 归一为完整路径；mechanical 用 noteDecision:'mechanical' 且 notePaths 为空；不需要 task 前缀。
 
 ## Step 2 — Plan Review
 主 agent 首次进入 plan-review 时加载技能 gate-plan-review；若本会话已加载且内容仍在上文，后续多轮 review 直接复用，不要重复调用 skill。读取该技能的 assets/worker-briefs/plan-review.md 写 review 任务，按任务规模和风险自行决定派一个或多个只读 review worker，覆盖 Standards、Spec、Architecture 三轴。

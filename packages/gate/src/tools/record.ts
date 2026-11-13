@@ -5,7 +5,6 @@ import { existsSync, lstatSync, readFileSync } from 'node:fs'
 import { GATE_RECORD_NODES, procedureFailure, procedureFor, renderProcedureResult } from '../protocol.js'
 import { rootAgentOf, resolveGate } from '../runtime/session.js'
 import { classifyPath } from '../classify.js'
-import { isMechanical, enterPhase } from '../runtime/gate.js'
 import { notePathsForDecision, normalizeNotePaths, validateNotePaths } from '../notes/note-files.js'
 import { REVIEW_NODES, bindToolResults, reviewAxesError, workerEvidenceError } from '../runtime/workers.js'
 import { accessFor } from '../access.js'
@@ -117,14 +116,11 @@ export function registerRecord(ctx: any, deps: GateDeps) {
         state.blockReason = null
       } else if (args.node === 'plan') {
         if (typeof args.task !== 'string' || args.task.trim() === '') {
-          return fail({ code: 'task-required', reason: 'node=plan 必须携带 task（planning 产出的工作项或 mechanical:<说明>）。' })
+          return fail({ code: 'task-required', reason: 'node=plan 必须携带 task（工作项简述；mechanical 用 noteDecision 表示）。' })
         }
         const decision = args.noteDecision
         if (!['new', 'update', 'in-place', 'mechanical'].includes(decision)) {
           return fail({ code: 'note-decision-required', reason: 'node=plan 需要 noteDecision（new/update/in-place/mechanical）。' })
-        }
-        if (decision === 'mechanical' && !isMechanical(args.task)) {
-          return fail({ code: 'mechanical-required', reason: 'mechanical 只允许 task 以 mechanical: 开头。' })
         }
         const optionNotePaths = notePathsForDecision(args.notePaths, decision)
         const noteError = validateNotePaths(gate.root, optionNotePaths, decision)
@@ -140,9 +136,6 @@ export function registerRecord(ctx: any, deps: GateDeps) {
           const decision = args.noteDecision ?? state.noteDecision
           if (!['new', 'update', 'in-place', 'mechanical'].includes(decision)) {
             return fail({ code: 'note-decision-required', reason: 'plan-revise 需要合法 noteDecision。' })
-          }
-          if (decision === 'mechanical' && !isMechanical(state.task)) {
-            return fail({ code: 'mechanical-required', reason: 'mechanical 只允许 task 以 mechanical: 开头。' })
           }
           const requestedNotePaths = args.notePaths ?? state.notePaths
           const optionNotePaths = notePathsForDecision(requestedNotePaths, decision)

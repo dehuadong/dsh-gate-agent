@@ -83,9 +83,9 @@ packages/gate/skills/gate-write-agent-notes/   # 插件内置、唯一的运行�
   - `notePaths[]`：`{path, class, lifecycle:'proposed'|'implemented'}`；path 接受 `.agents/notes/<lifecycle>/<class>/...`、`<lifecycle>/<class>/...` 或 `<class>/...`，gate_record 归一为完整路径；
   - `noteDecision`：`new|in-place|update|mechanical`；
   - `noteSearch`：检索摘要/证据；
-- 一致性：`new` 只能 proposed 新建；`update` 只能更新已有 proposed；`in-place` 只能更新已有 implemented；`mechanical` 必须空 `notePaths` 且 task 以 `mechanical:` 开头（复用 `isMechanical`），否则拒绝——不能只靠 `noteDecision` 自证；非 mechanical 至少一篇；
+- 一致性：`new` 只能 proposed 新建；`update` 只能更新已有 proposed；`in-place` 只能更新已有 implemented；`mechanical` 必须空 `notePaths`；2026-11-13 起不再要求 task 前缀，直接 implement 自动设置，见 [2026-11-13 direct implement mechanical](../../implemented/process/2026-11-13-direct-implement-mechanical.md)；非 mechanical 至少一篇；
 - `notePaths` 允许多篇（同一产品合同分开承接）；`plan-revise` 可更新，`/gate-enter-plan` 重置这些字段与 `noteVerified`；
-- **implement 入口改为读取 `state.notePaths`**，不再调用 `hasProposedNote(root, task)`；`mechanical` 直接放行，implemented 原地同步也放行。`hasProposedNote` 仅保留为旧数据兼容/诊断。
+- **implement 入口改为读取 `state.notePaths`**，不再调用 `hasProposedNote(root, task)`；`mechanical` 直接放行，implemented 原地同步也放行。直接 implement 自动 mechanical 见 [2026-11-13 direct implement mechanical](../../implemented/process/2026-11-13-direct-implement-mechanical.md)。`hasProposedNote` 仅保留为旧数据兼容/诊断。
 
 ### 5. notePath 契约
 

@@ -125,6 +125,8 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 | `/gate-return-discuss` | 无 | 回到 discuss |
 | `/gate-status` | 无 | 只读显示当前 phase/node 与 procedure |
 
+直接 implement（`/gate-enter-implement [简单说明]` 或 `gate_start_phase({node:'implement',brief})`）会自动标记 `mechanical`，跳过 Note lifecycle；不需要 `mechanical:` 前缀。plan/plan-revise 手动选择 `mechanical` 时也不要求前缀，只需 `notePaths: []`。
+
 离开 discuss 的授权可来自对话（包括要求用户再输入 slash command）或 `ask_user_question`；明确授权后，主代理可调用 `gate_start_phase({node:'plan'|'implement', brief})`。
 
 ## 技能
@@ -175,7 +177,7 @@ gate_record({
 /gate-enter-implement
 ```
 
-主代理派 `gate-implement` worker 实施；完成后 `gate_record({node:'implement', workerSessionIds})` 进入 `code-review`。review 通过后进入 `verify`；verify PASS 后进入 `note-lifecycle`。
+主代理派 `gate-implement` worker 实施；完成后 `gate_record({node:'implement', workerSessionIds})` 进入 `code-review`。review 通过后进入 `verify`；verify PASS 后：非 mechanical 进入 `note-lifecycle`，mechanical 直接回 discuss 并提示提交。
 
 Note lifecycle：
 

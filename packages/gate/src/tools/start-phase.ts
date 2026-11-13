@@ -8,7 +8,7 @@ export function registerStartPhase(ctx: any, deps: GateDeps) {
   const { store, reviewLimit, wake } = deps
   ctx.tools.register({
     name: 'gate_start_phase',
-    description: '在用户明确授权后从 discuss/complete 进入 plan 或 implement。仅 root agent 可调用；授权可来自对话（包括要求用户再输入 slash command）或 ask_user_question。',
+    description: '在用户明确授权后从 discuss/complete 进入 plan 或 implement。仅 root agent 可调用；授权可以在对话中要求用户再输入 slash command或 ask_user_question 中给出。',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -36,7 +36,7 @@ export function registerStartPhase(ctx: any, deps: GateDeps) {
         if (brief === '') return fail({ code: 'brief-required', reason: '直接 implement 需要一句说明。' })
         state.task = brief
         state.planReady = false
-        state.noteDecision = null
+        state.noteDecision = 'mechanical'
         state.notePaths = []
         state.noteSearch = null
         state.noteVerified = false
