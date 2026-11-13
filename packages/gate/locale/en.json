@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Gate",
-    "description": "Phase gate and write policy for agent workflows."
+    "title": "Gate Agent",
+    "description": "Phase/node gate for discuss, planning, implementation, review, verification, and Note lifecycle, with gate commands, tools, and skills."
   }
 }

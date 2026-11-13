@@ -40,7 +40,7 @@ check('plugin exports a Standard Schema Config', typeof Config?.['~standard']?.v
 check('Config accepts an empty object', Array.isArray(Config['~standard'].validate({}).issues) === false)
 check('Config rejects an unknown key', Array.isArray(Config['~standard'].validate({ nope: 1 }).issues))
 
-for (const [language, title] of [['en', 'Gate'], ['zh', 'Gate 门禁']]) {
+for (const [language, title] of [['en', 'Gate Agent'], ['zh', 'Gate Agent']]) {
   const file = path.join(root, 'locale', `${language}.json`)
   const locale = JSON.parse(readFileSync(file, 'utf8'))
   check(`locale ${language} has meta title and description`,

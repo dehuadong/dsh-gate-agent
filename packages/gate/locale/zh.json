@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Gate 门禁",
-    "description": "按阶段控制 agent 的写入与评审流程。"
+    "title": "Gate Agent",
+    "description": "用 phase/node 门禁编排讨论、规划、实施、评审、验收与 Note 生命周期，并提供 gate 命令、工具和专项技能。"
   }
 }

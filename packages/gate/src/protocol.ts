@@ -1,5 +1,6 @@
 import { DEFAULT_REVIEW_LIMIT } from './config.js'
 import type { GateState } from './state.js'
+import { isMechanicalDecision } from './note-decisions.js'
 
 export const DISCUSS_ORCHESTRATION = `## discuss
 
@@ -276,7 +277,7 @@ export function statusText(state: GateState, reviewLimit = DEFAULT_REVIEW_LIMIT,
     `planReady：${state.planReady ? '是' : '否'}`,
     ...(includeRounds ? [`rounds：${roundsText(state, reviewLimit)}`] : []),
   ]
-  if (state.notePaths?.length > 0 || state.noteDecision === 'mechanical') {
+  if (state.notePaths?.length > 0 || isMechanicalDecision(state.noteDecision)) {
     lines.push(`notes：${state.noteDecision ?? '无'} ${state.notePaths?.length ?? 0} 篇，verified=${state.noteVerified === true ? '是' : '否'}`)
   }
   if (state.exhausted?.plan === true || state.exhausted?.code === true) {

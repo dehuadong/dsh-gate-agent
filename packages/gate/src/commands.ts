@@ -12,6 +12,7 @@ import { runNotesScripts } from './notes/scripts.js'
 import { rootAgentOf } from './runtime/session.js'
 import type { Phase } from './state.js'
 import { accessFor, accessText } from './access.js'
+import { MECHANICAL_DECISION } from './note-decisions.js'
 
 export function registerCommands(ctx: any, deps: GateDeps) {
   const { store, reviewLimit, wake } = deps
@@ -57,7 +58,7 @@ export function registerCommands(ctx: any, deps: GateDeps) {
         if (brief === '') return { kind: 'error', text: '请用一句话说明要实施的内容；不要求工作项格式。' }
         state.task = brief
         state.planReady = false
-        state.noteDecision = 'mechanical'
+        state.noteDecision = MECHANICAL_DECISION
         state.notePaths = []
         state.noteSearch = null
         state.noteVerified = false

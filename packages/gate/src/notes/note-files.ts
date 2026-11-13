@@ -3,6 +3,8 @@ import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import type { NotePath } from '../state.js'
+import type { NoteDecision } from '../note-decisions.js'
+import { NOTE_DECISION_LIFECYCLE, isMechanicalDecision } from '../note-decisions.js'
 import { isInside, pathHasSymlink, resolveNodeBinary } from './fs.js'
 import { runFormatOnNote, runNotesScripts } from './scripts.js'
 import { NOTES_SKILL_DIR } from '../paths.js'
@@ -177,12 +179,12 @@ export function normalizeNotePaths(value: unknown): NotePath[] {
   })
 }
 
-export function notePathsForDecision(value: unknown, decision: string): NotePath[] {
-  return decision === 'mechanical' ? value as NotePath[] : normalizeNotePaths(value)
+export function notePathsForDecision(value: unknown, decision: NoteDecision): NotePath[] {
+  return isMechanicalDecision(decision) ? value as NotePath[] : normalizeNotePaths(value)
 }
 
-export function validateNotePaths(root: string, value: NotePath[], decision: string) {
-  if (decision === 'mechanical') {
+export function validateNotePaths(root: string, value: NotePath[], decision: NoteDecision) {
+  if (isMechanicalDecision(decision)) {
     if (!Array.isArray(value) || value.length !== 0) return { code: 'note-paths-required', reason: 'mechanical 的 notePaths 必须为空。' }
     return undefined
   }
@@ -194,9 +196,10 @@ export function validateNotePaths(root: string, value: NotePath[], decision: str
     }
     if (!NOTE_CLASSES.has(entry.class)) return { code: 'invalid-note-class', class: entry.class }
     if (!['proposed', 'implemented'].includes(entry.lifecycle)) return { code: 'invalid-note-lifecycle', lifecycle: entry.lifecycle }
-    if (decision === 'new' && entry.lifecycle !== 'proposed') return { code: 'note-decision-mismatch', reason: 'new 只能 proposed。' }
-    if (decision === 'update' && entry.lifecycle !== 'proposed') return { code: 'note-decision-mismatch', reason: 'update 只能 proposed。' }
-    if (decision === 'in-place' && entry.lifecycle !== 'implemented') return { code: 'note-decision-mismatch', reason: 'in-place 只能 implemented。' }
+    const expectedLifecycle = NOTE_DECISION_LIFECYCLE[decision]
+    if (expectedLifecycle !== null && entry.lifecycle !== expectedLifecycle) {
+      return { code: 'note-decision-mismatch', reason: `${decision} 只能 ${expectedLifecycle}。` }
+    }
     const normalized = entry.path.replaceAll('\\', '/')
     if (normalized.startsWith('/') || normalized.includes('..')) return { code: 'invalid-note-path', path: entry.path }
     const parts = normalized.split('/')

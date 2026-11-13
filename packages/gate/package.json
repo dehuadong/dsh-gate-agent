@@ -2,7 +2,7 @@
   "name": "dsh-gate-agent",
   "version": "0.1.2",
   "type": "module",
-  "description": "Full write gate and phase orchestrator with plugin-local skills.",
+  "description": "Phase/node workflow gate with built-in commands, tools, and skills.",
   "exports": {
     ".": "./lib/index.js",
     "./locale/*.json": "./locale/*.json",

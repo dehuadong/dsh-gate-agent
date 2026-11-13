@@ -6,6 +6,7 @@ import { rootAgentOf, resolveGate, effectiveState } from '../runtime/session.js'
 import { finalizeNote, recoverFinalize } from '../notes/note-files.js'
 import { isInside, pathHasSymlink } from '../notes/fs.js'
 import { runNotesScripts } from '../notes/scripts.js'
+import { isMechanicalDecision } from '../note-decisions.js'
 export function registerNoteTools(ctx: any, deps: GateDeps) {
   const { store, reviewLimit, wake } = deps
   ctx.tools.register({
@@ -115,7 +116,7 @@ export function registerNoteTools(ctx: any, deps: GateDeps) {
       const gate = resolveGate(ctx, exec.agent)
       const state = store.read(gate.root, exec.agent)
       if (state.node !== 'note-lifecycle') return { ok: false, code: 'not-note-lifecycle', reason: '只在 note-lifecycle 节点可用。' }
-      if (state.noteDecision === 'mechanical') {
+      if (isMechanicalDecision(state.noteDecision)) {
         state.noteVerified = true
         state.noteFinalized = true
         store.write(gate.root, exec.agent, state)

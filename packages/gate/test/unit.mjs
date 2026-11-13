@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { apply, Config, DISCUSS_ORCHESTRATION, GATE_RECORD_NODES, NODE_METHODS, WORKER_NODES, loadState, saveState, defaultState } from '../lib/index.js'
+import { apply, Config, DISCUSS_ORCHESTRATION, GATE_RECORD_NODES, NODE_METHODS, WORKER_NODES, loadState, saveState, defaultState, normalizeState } from '../lib/index.js'
 
 let failures = 0
 function check(name, condition, detail) {
@@ -287,6 +287,7 @@ check('implement accepts a simple brief without planning', directEnter.kind === 
 check('direct implement is automatically mechanical', loadState(directWorkspace, directAgent).noteDecision === 'mechanical' && loadState(directWorkspace, directAgent).notePaths.length === 0)
 const directImplementRecord = await directHost.tools.gate_record.execute({ node: 'implement', workerSessionIds: ['worker-test'] }, { agent: directAgent })
 check('direct implement record keeps mechanical and moves to review', directImplementRecord.ok === true && directImplementRecord.state.node === 'code-review' && directImplementRecord.state.noteDecision === 'mechanical')
+check('direct implement noteVerified stays false until verify', directImplementRecord.state.noteVerified === false)
 const directReview = await directHost.tools.gate_record.execute({ node: 'code-review', findings: [], reviewAxes: { standards: { findings: [] }, spec: { findings: [] } }, workerSessionIds: ['worker-test'] }, { agent: directAgent })
 check('direct implement review advances to verify', directReview.ok === true && directReview.state.node === 'verify')
 mkdirSync(path.join(directWorkspace, 'artifacts'), { recursive: true })
@@ -451,6 +452,19 @@ check('plan-revise mechanical does not require task prefix', mechanicalRevise.ok
 saveState(mechanicalPlanWorkspace, mechanicalPlanAgent, { ...defaultState(), phase: 'orchestrating', node: 'plan', task: 'work', work: 'active' })
 const mechanicalWithPath = await mechanicalPlanHost.tools.gate_record.execute({ node: 'plan', task: 'mechanical with path', noteDecision: 'mechanical', notePaths: [{ path: '.agents/notes/proposed/feature/x.md', class: 'feature', lifecycle: 'proposed' }], workerSessionIds: ['worker-test'] }, { agent: mechanicalPlanAgent })
 check('mechanical still rejects non-empty notePaths', mechanicalWithPath.code === 'note-paths-required')
+check('invalid noteDecision normalizes to null', normalizeState({ ...defaultState(), noteDecision: 'bogus' }).noteDecision === null)
+const invalidDecisionWorkspace = makeWorkspace()
+const invalidDecisionHost = fakeHost(invalidDecisionWorkspace)
+const invalidDecisionAgent = { id: 'session-invalid-decision', session: { header: {} } }
+saveState(invalidDecisionWorkspace, invalidDecisionAgent, { ...defaultState(), phase: 'orchestrating', node: 'plan', task: 'work', work: 'active' })
+const invalidPlanDecision = await invalidDecisionHost.tools.gate_record.execute({ node: 'plan', task: 'work', noteDecision: 'bogus', workerSessionIds: ['worker-test'] }, { agent: invalidDecisionAgent })
+check('plan rejects invalid noteDecision', invalidPlanDecision.code === 'note-decision-required')
+saveState(invalidDecisionWorkspace, invalidDecisionAgent, { ...defaultState(), phase: 'orchestrating', node: 'implement', task: 'work', work: 'active' })
+const invalidImplementDecision = await invalidDecisionHost.tools.gate_record.execute({ node: 'implement', noteDecision: 'bogus', workerSessionIds: ['worker-test'] }, { agent: invalidDecisionAgent })
+check('implement rejects invalid noteDecision', invalidImplementDecision.code === 'note-decision-required')
+saveState(invalidDecisionWorkspace, invalidDecisionAgent, { ...defaultState(), phase: 'orchestrating', node: 'plan-revise', task: 'work', work: 'active' })
+const invalidReviseDecision = await invalidDecisionHost.tools.gate_record.execute({ node: 'plan-revise', noteDecision: 'bogus', workerSessionIds: ['worker-test'] }, { agent: invalidDecisionAgent })
+check('plan-revise rejects invalid noteDecision', invalidReviseDecision.code === 'note-decision-required')
 const normalVerifyWorkspace = makeWorkspace()
 const normalVerifyHost = fakeHost(normalVerifyWorkspace)
 const normalVerifyAgent = { id: 'session-normal-verify', session: { header: {} } }

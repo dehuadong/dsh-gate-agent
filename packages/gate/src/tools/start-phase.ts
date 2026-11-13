@@ -4,6 +4,7 @@ import { procedureFailure, procedureFor, renderProcedureResult } from '../protoc
 import { rootAgentOf, resolveGate } from '../runtime/session.js'
 import { normalizeState } from '../state.js'
 import { accessFor } from '../access.js'
+import { MECHANICAL_DECISION } from '../note-decisions.js'
 export function registerStartPhase(ctx: any, deps: GateDeps) {
   const { store, reviewLimit, wake } = deps
   ctx.tools.register({
@@ -36,7 +37,7 @@ export function registerStartPhase(ctx: any, deps: GateDeps) {
         if (brief === '') return fail({ code: 'brief-required', reason: '直接 implement 需要一句说明。' })
         state.task = brief
         state.planReady = false
-        state.noteDecision = 'mechanical'
+        state.noteDecision = MECHANICAL_DECISION
         state.notePaths = []
         state.noteSearch = null
         state.noteVerified = false

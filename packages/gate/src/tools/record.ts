@@ -8,6 +8,7 @@ import { classifyPath } from '../classify.js'
 import { notePathsForDecision, normalizeNotePaths, validateNotePaths } from '../notes/note-files.js'
 import { REVIEW_NODES, bindToolResults, reviewAxesError, workerEvidenceError } from '../runtime/workers.js'
 import { accessFor } from '../access.js'
+import { MECHANICAL_DECISION, NOTE_DECISIONS, isNoteDecision, isMechanicalDecision } from '../note-decisions.js'
 export function registerRecord(ctx: any, deps: GateDeps) {
   const { store, reviewLimit, wake } = deps
   ctx.tools.register({
@@ -37,7 +38,7 @@ export function registerRecord(ctx: any, deps: GateDeps) {
             required: ['path', 'class', 'lifecycle'],
           },
         },
-        noteDecision: { type: 'string', enum: ['new', 'update', 'in-place', 'mechanical'] },
+        noteDecision: { type: 'string', enum: [...NOTE_DECISIONS] },
         noteSearch: { type: 'string' },
         verification: {
           type: 'object',
@@ -119,32 +120,32 @@ export function registerRecord(ctx: any, deps: GateDeps) {
           return fail({ code: 'task-required', reason: 'node=plan 必须携带 task（工作项简述；mechanical 用 noteDecision 表示）。' })
         }
         const decision = args.noteDecision
-        if (!['new', 'update', 'in-place', 'mechanical'].includes(decision)) {
+        if (!isNoteDecision(decision)) {
           return fail({ code: 'note-decision-required', reason: 'node=plan 需要 noteDecision（new/update/in-place/mechanical）。' })
         }
         const optionNotePaths = notePathsForDecision(args.notePaths, decision)
         const noteError = validateNotePaths(gate.root, optionNotePaths, decision)
         if (noteError !== undefined) return fail(noteError)
         state.task = args.task.trim()
-        state.notePaths = decision === 'mechanical' ? [] : optionNotePaths
+        state.notePaths = isMechanicalDecision(decision) ? [] : optionNotePaths
         state.noteDecision = decision
         state.noteSearch = typeof args.noteSearch === 'string' ? args.noteSearch : null
-        state.noteVerified = decision === 'mechanical'
+        state.noteVerified = isMechanicalDecision(decision)
         state.node = 'plan-review'
       } else if (args.node === 'plan-revise') {
         if (args.noteDecision !== undefined || args.notePaths !== undefined) {
           const decision = args.noteDecision ?? state.noteDecision
-          if (!['new', 'update', 'in-place', 'mechanical'].includes(decision)) {
+          if (!isNoteDecision(decision)) {
             return fail({ code: 'note-decision-required', reason: 'plan-revise 需要合法 noteDecision。' })
           }
           const requestedNotePaths = args.notePaths ?? state.notePaths
           const optionNotePaths = notePathsForDecision(requestedNotePaths, decision)
           const noteError = validateNotePaths(gate.root, optionNotePaths, decision)
           if (noteError !== undefined) return fail(noteError)
-          state.notePaths = decision === 'mechanical' ? [] : optionNotePaths
+          state.notePaths = isMechanicalDecision(decision) ? [] : optionNotePaths
           state.noteDecision = decision
           if (typeof args.noteSearch === 'string') state.noteSearch = args.noteSearch
-          state.noteVerified = decision === 'mechanical'
+          state.noteVerified = isMechanicalDecision(decision)
         }
         state.node = 'plan-review'
       } else if (args.node === 'plan-review') {
@@ -165,18 +166,30 @@ export function registerRecord(ctx: any, deps: GateDeps) {
           state.blockReason = 'plan-review-rounds-exhausted'
         } else state.node = 'plan-revise'
       } else if (args.node === 'implement') {
-        if (args.noteDecision === 'mechanical') {
-          state.noteDecision = 'mechanical'
+        if (args.noteDecision !== undefined && !isNoteDecision(args.noteDecision)) {
+          return fail({ code: 'note-decision-required', reason: 'implement 的 noteDecision 必须是 new/update/in-place/mechanical。' })
+        }
+        const decision = args.noteDecision ?? state.noteDecision
+        if (decision !== null && !isNoteDecision(decision)) {
+          return fail({ code: 'note-decision-required', reason: 'implement 的 noteDecision 必须是 new/update/in-place/mechanical。' })
+        }
+        if (isMechanicalDecision(args.noteDecision)) {
+          state.noteDecision = MECHANICAL_DECISION
           state.notePaths = []
           state.noteVerified = true
+        } else if (args.noteDecision === undefined && isMechanicalDecision(state.noteDecision)) {
+          // Direct implement is already mechanical; noteVerified stays false until verify PASS.
         } else {
           if (Array.isArray(args.notePaths)) {
+            if (!isNoteDecision(decision)) {
+              return fail({ code: 'note-decision-required', reason: 'implement 写 notePaths 需要合法 noteDecision。' })
+            }
             const nextNotePaths = normalizeNotePaths(args.notePaths)
-            const noteError = validateNotePaths(gate.root, nextNotePaths, args.noteDecision ?? state.noteDecision)
+            const noteError = validateNotePaths(gate.root, nextNotePaths, decision)
             if (noteError !== undefined) return fail(noteError)
             state.notePaths = nextNotePaths
           }
-          if (['new', 'update', 'in-place'].includes(args.noteDecision)) state.noteDecision = args.noteDecision
+          if (isNoteDecision(args.noteDecision) && !isMechanicalDecision(args.noteDecision)) state.noteDecision = args.noteDecision
         }
         state.node = 'code-review'
       }
@@ -235,7 +248,7 @@ export function registerRecord(ctx: any, deps: GateDeps) {
         } else if (verification.passed !== true) {
           state.node = 'implement-revise'
           state.noteVerified = false
-        } else if (state.noteDecision === 'mechanical') {
+        } else if (isMechanicalDecision(state.noteDecision)) {
           state.noteVerified = true
           state.noteFinalized = true
           commitHint = '建议提交实现'

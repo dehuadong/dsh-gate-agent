@@ -1,3 +1,6 @@
+import { isNoteDecision } from './note-decisions.js'
+import type { NoteDecision } from './note-decisions.js'
+
 export const PHASES = ['discuss', 'orchestrating', 'reviewing', 'docs', 'blocked', 'complete'] as const
 
 export type Phase = typeof PHASES[number]
@@ -21,7 +24,7 @@ export interface GateState {
   verification: Record<string, unknown> | null
   blockedFrom: { phase: string | null; node: string | null } | null
   notePaths: NotePath[]
-  noteDecision: string | null
+  noteDecision: NoteDecision | null
   noteSearch: string | null
   noteVerified: boolean
   noteFinalized: boolean
@@ -104,7 +107,7 @@ export function normalizeState(value: unknown): GateState {
     notePaths: Array.isArray(source.notePaths)
       ? source.notePaths.map((entry: unknown) => (entry !== null && typeof entry === 'object' && !Array.isArray(entry) ? { ...entry } : entry) as NotePath)
       : [],
-    noteDecision: textOrNull(source.noteDecision),
+    noteDecision: isNoteDecision(source.noteDecision) ? source.noteDecision : null,
     noteSearch: textOrNull(source.noteSearch),
     noteVerified: source.noteVerified === true,
     noteFinalized: source.noteFinalized === true,
