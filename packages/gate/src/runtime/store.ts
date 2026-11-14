@@ -17,8 +17,6 @@ export function applyCommandEvent(state: GateState, name: string, args: any) {
         task: state.planReady !== true && text !== '' ? text : state.task,
         blockReason: null, blockedFrom: null, verification: null, noteVerified: false, noteFinalizeRecovery: [],
       }
-    case 'gate-fix-bug':
-      return { ...state, phase: 'orchestrating', task: text === '' ? (state.task ?? '当前上下文中的缺陷') : text, node: 'fix-bug', work: 'active', blockReason: null, blockedFrom: null }
     case 'gate-docs':
       return { ...state, phase: 'docs', task: text, node: null, work: 'active', blockReason: null, blockedFrom: null }
     case 'gate-implement-review':

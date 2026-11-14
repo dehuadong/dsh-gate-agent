@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { apply } from '../lib/index.js'
 import * as lib from '../lib/index.js'
 
-const expectedExports = ['apply','inject','Config','DISCUSS_ORCHESTRATION','PLAN_ORCHESTRATION','IMPLEMENT_ORCHESTRATION','FIX_BUG_ORCHESTRATION','DOCS_ORCHESTRATION','NOTE_LIFECYCLE_ORCHESTRATION','GATE_RECORD_NODES','NODE_METHODS','WORKER_NODES','transformImplemented','PHASES','defaultState','normalizeState','loadState','saveState'].sort()
+const expectedExports = ['apply','inject','Config','DISCUSS_ORCHESTRATION','PLAN_ORCHESTRATION','IMPLEMENT_ORCHESTRATION','DOCS_ORCHESTRATION','NOTE_LIFECYCLE_ORCHESTRATION','GATE_RECORD_NODES','NODE_METHODS','WORKER_NODES','transformImplemented','PHASES','defaultState','normalizeState','loadState','saveState'].sort()
 assert.deepStrictEqual(Object.keys(lib).sort(), expectedExports)
 
 const tools = []

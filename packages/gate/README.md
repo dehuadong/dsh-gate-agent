@@ -68,7 +68,6 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 | `orchestrating/implement-revise` | 按 review findings 修正 | implement worker；`gate-implement` |
 | `orchestrating/verify` | 最终验收与证据绑定 | verify worker；`gate-verify` |
 | `orchestrating/note-lifecycle` | 把 proposed Note 转 implemented、跑 notes 校验 | root；`gate-write-agent-notes` lifecycle 工具 |
-| `orchestrating/fix-bug` | 修复已授权缺陷并复核 | fix worker + review worker；`gate-fix-bug` + `gate-code-review` |
 | `reviewing/code-review-standalone` | 单独只读 code review | review worker；`gate-code-review` |
 | `reviewing/proposal-review` | 单独提案评审 | review worker；`gate-plan-review` |
 | `reviewing/verify-standalone` | 单独只读验收 | verify worker；`gate-user-verify` |
@@ -85,7 +84,6 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 | discuss root | ❌ | ❌ | 只读 | add/commit/push |
 | planning worker | ❌ | ✅ gate_note_write | 只读 | ❌ |
 | plan-review / code-review / code-review-standalone / proposal-review worker | ❌ | ❌ | 只读 | ❌ |
-| implement / implement-revise / fix-bug worker | ✅ | ❌ | 可写 | add/commit/push |
 | verify / verify-standalone worker | ❌ | ❌ | 只读 | ❌ |
 | note-lifecycle root | ✅ | ✅ lifecycle 工具 | 可写 | add/commit/push |
 | docs root | ✅ | ❌ | 可写 | add/commit/push |
@@ -95,7 +93,6 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 
 - discuss 文件只读；要改文件先进入 plan/implement。提交已有改动用 git add/commit/push，不受文件只读影响。
 - planning worker 的 shell 只读；产品文件和仓库写拒绝。
-- implement/fix worker 保留 push。
 - access 会显示在 gate_status、/gate-status、gate_record、gate_start_phase、命令 follow-up 和 worker prompt：
 
 ```text
@@ -115,7 +112,6 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 | `/gate-docs [文档范围或上下文语义]` | 可选 | 进入文档治理，按项目文档规范处理 |
 | `/gate-implement-review [具体工作事项或上下文语义]` | 可选 | 对当前改动做独立只读 code review，只输出 findings |
 | `/gate-code-verify [具体工作事项或上下文语义]` | 可选 | 对当前改动做独立只读验收（gate-user-verify） |
-| `/gate-fix-bug [具体工作事项或上下文语义]` | 可选 | 基于描述或当前上下文派 fix worker 修复已授权缺陷 |
 | `/gate-propose-review [具体工作事项或上下文语义]` | 可选 | 对提案做独立只读三轴评审 |
 | `/gate-note-verify` | 无 | 只读检查 notes tree/format/lifecycle/archived |
 | `/gate-note-archive <note> [--superseded-by <new>]` | 必需 Note 路径 | 归档 implemented Note，写 Archived、移动、封印、报告入站链接 |
@@ -138,11 +134,9 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 |---|---|---|
 | `gate-planning` | planning worker | 生成/更新规划 Note，组织工作项、验收和设计 |
 | `gate-plan-review` | plan/proposal review worker | Standards/Spec/Architecture 三轴评审 |
-| `gate-implement` | implement/fix worker | 按计划实施并返回改动/验证结果 |
 | `gate-code-review` | code review worker | 对实现做 Standards/Spec 两轴 review |
 | `gate-verify` | verify worker | 最终验收、证据收集与汇报 |
 | `gate-user-verify` | standalone verify worker | 独立只读验收 |
-| `gate-fix-bug` | fix worker | 已授权缺陷修复流程 |
 | `gate-write-agent-notes` | planning worker / root note lifecycle | Note 检索、格式、finalize/verify |
 
 ## 典型用法
@@ -236,14 +230,6 @@ gate 不自动 `git add`/`git commit`；完成 note-lifecycle 后由用户或主
 
 主代理派只读 verify worker，使用 `gate-user-verify`；PASS 后 `gate_record({node:'verify-standalone', verification, workerSessionIds})` 回 discuss。
 
-### 缺陷修复
-
-```text
-/gate-fix-bug 修复空指针异常
-```
-
-主代理派 fix worker 执行修复，再派独立 review worker 复核；完成后 `gate_record({node:'fix-bug', workerSessionIds})`。
-
 ### 提案评审
 
 ```text
@@ -324,7 +310,7 @@ gate_record({
 })
 ```
 
-- `node`：`plan`、`plan-review`、`proposal-review`、`plan-revise`、`implement`、`code-review`、`implement-revise`、`verify`、`verify-standalone`、`code-review-standalone`、`fix-bug`、`note-lifecycle`、`docs`。
+- `node`：`plan`、`plan-review`、`proposal-review`、`plan-revise`、`implement`、`code-review`、`implement-revise`、`verify`、`verify-standalone`、`code-review-standalone`、`note-lifecycle`、`docs`。
 - `plan` 必须带 `task`。
 - worker 节点必须带当前 root 的、已 settled 的 child `workerSessionIds`。
 - `plan-review`/`proposal-review` 需要 Standards/Spec/Architecture 三轴；`code-review`/`code-review-standalone` 需要 Standards/Spec 两轴。
@@ -454,7 +440,6 @@ discuss 和 plan 默认不允许普通文件写。`handoff`、PRD、research 等
 - `orchestrating/implement-revise`
 - `orchestrating/verify`
 - `orchestrating/note-lifecycle`
-- `orchestrating/fix-bug`
 - `reviewing/code-review-standalone`
 - `reviewing/proposal-review`
 - `reviewing/verify-standalone`

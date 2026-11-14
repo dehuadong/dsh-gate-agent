@@ -36,7 +36,7 @@ export function accessFor(state: GateState, worker: boolean): GateAccess {
   if (state.node === 'plan' || state.node === 'plan-revise') {
     return { read: true, write: 'none', noteWrite: true, shell: 'read', repoWrite: 'none' }
   }
-  if (state.node === 'implement' || state.node === 'implement-revise' || state.node === 'fix-bug') {
+  if (state.node === 'implement' || state.node === 'implement-revise') {
     return { read: true, write: 'workspace', noteWrite: false, shell: 'write', repoWrite: 'push' }
   }
   return { read: true, write: 'none', noteWrite: false, shell: 'read', repoWrite: 'none' }

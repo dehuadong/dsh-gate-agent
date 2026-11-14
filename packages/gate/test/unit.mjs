@@ -143,7 +143,6 @@ check('docs command registered', typeof host.commands['gate-docs']?.handler === 
 check('status command registered', typeof host.commands['gate-status']?.handler === 'function')
 check('note archive command registered', typeof host.commands['gate-note-archive']?.handler === 'function')
 check('note board command registered', typeof host.commands['gate-note-board']?.handler === 'function')
-check('gate-fix-bug command registered', typeof host.commands['gate-fix-bug']?.handler === 'function')
 check('gate tools declare output schema and render', Object.values(host.tools).every(tool => tool?.output?.schema !== undefined && typeof tool.output.render === 'function'))
 check('discuss denies root code writes', (await exec('write', { file_path: 'src/x.ts' })).kind === 'deny')
 check('discuss denies root docs writes', (await exec('write', { file_path: 'docs/x.md' })).kind === 'deny')
@@ -258,7 +257,7 @@ check('static discuss methodology carries the full rules',
 )
 check('root prompt is the static methodology',
   staticPrompt.startsWith('## Gate 方法论')
-  && ['## discuss', '## orchestrating/plan · orchestrating/plan-review · orchestrating/plan-revise', '## orchestrating/implement · orchestrating/implement-revise', '## orchestrating/code-review', '## orchestrating/verify', '## orchestrating/note-lifecycle', '## orchestrating/fix-bug', '## docs', '## reviewing/code-review-standalone', '## reviewing/proposal-review', '## reviewing/verify-standalone', '## blocked', '## complete', '## orchestrating', '## reviewing'].every(heading => staticPrompt.includes(heading))
+  && ['## discuss', '## orchestrating/plan · orchestrating/plan-review · orchestrating/plan-revise', '## orchestrating/implement · orchestrating/implement-revise', '## orchestrating/code-review', '## orchestrating/verify', '## orchestrating/note-lifecycle', '## docs', '## reviewing/code-review-standalone', '## reviewing/proposal-review', '## reviewing/verify-standalone', '## blocked', '## complete', '## orchestrating', '## reviewing'].every(heading => staticPrompt.includes(heading))
   && !/^\d+\./mu.test(staticPrompt)
   && !staticPrompt.includes('状态：')
   && !staticPrompt.includes('rounds：')
@@ -278,7 +277,6 @@ const variantCases = [
   ['verify', { phase: 'orchestrating', node: 'verify', task: 'x', work: 'active' }, '## Step 3', '## Step 1'],
   ['note-lifecycle', { phase: 'orchestrating', node: 'note-lifecycle', task: 'x', work: 'active' }, 'gate_note_finalize', '## Step 1'],
   ['docs', { phase: 'docs', task: 'docs', work: 'active' }, 'gate_record({node:\'docs\'})', '## Step 1'],
-  ['fix-bug', { phase: 'orchestrating', node: 'fix-bug', task: 'x', work: 'active' }, '## /gate-fix-bug 编排', '## Plan revise'],
   ['reviewing-code', { phase: 'reviewing', node: 'code-review-standalone', task: 'x', work: 'active' }, 'gate-code-review', '## Step 1'],
   ['reviewing-proposal', { phase: 'reviewing', node: 'proposal-review', task: 'x', work: 'active' }, 'gate-plan-review', '## Step 1'],
   ['reviewing-verify', { phase: 'reviewing', node: 'verify-standalone', task: 'x', work: 'active' }, 'gate-user-verify', '## Step 1'],
@@ -392,14 +390,6 @@ check('docs gate_record without node returns a lossless wrong-node error',
   && losslessJson(missingNodeDocs),
   JSON.stringify(missingNodeDocs))
 saveState(nodeGuardWorkspace, nodeGuardAgent, defaultState())
-
-const fixWorkspace = makeWorkspace()
-const fixHost = fakeHost(fixWorkspace)
-const fixAgent = { id: 'session-fix', session: { header: {} } }
-const fixStarted = await fixHost.commands['gate-fix-bug'].handler({ agent: fixAgent, rawInput: '修复空指针', attachments: [] })
-check('gate-fix-bug enters fix node', fixStarted.kind === 'success' && loadState(fixWorkspace, fixAgent).node === 'fix-bug')
-const fixDone = await fixHost.tools.gate_record.execute({ node: 'fix-bug', workerSessionIds: ['worker-test'] }, { agent: fixAgent })
-check('fix-bug returns to discuss', fixDone.ok === true && fixDone.phase === 'discuss')
 
 await run('gate-enter-plan')
 check('plan command enters orchestrating', stateOf().phase === 'orchestrating' && stateOf().node === 'plan')
@@ -703,7 +693,7 @@ for (const node of ['plan', 'plan-review', 'verify']) {
 }
 saveState(workspace, rootAgent, { ...defaultState(), phase: 'orchestrating', node: 'implement', task: 'work', work: 'active' })
 check('implement worker can git commit', (await execWith(workerHost, childAgent, 'pwsh', { command: 'git commit -m implement' })).kind === 'allow')
-for (const node of ['implement-revise', 'fix-bug']) {
+for (const node of ['implement-revise']) {
   saveState(workspace, rootAgent, { ...defaultState(), phase: 'orchestrating', node, task: 'work', work: 'active' })
   check(`${node} worker can git commit`, (await execWith(workerHost, childAgent, 'pwsh', { command: 'git commit -m worker' })).kind === 'allow')
 }
@@ -715,22 +705,19 @@ check('planning worker access is note-only read-shell', workerStatus.access?.wri
 const workerCommandStatus = await workerHost.commands['gate-status'].handler({ agent: childAgent, rawInput: '', attachments: [] })
 check('/gate-status matches gate_status for a worker', workerCommandStatus.text === workerStatus.text, JSON.stringify({ command: workerCommandStatus.text, tool: workerStatus.text }))
 saveState(workspace, rootAgent, { ...defaultState(), phase: 'reviewing', node: 'verify-standalone', task: 'x', work: 'active' })
-check('verify-standalone worker gets its method', workerSection.text({ agent: childAgent }).includes('gate-user-verify'))
-saveState(workspace, rootAgent, { ...defaultState(), phase: 'orchestrating', node: 'fix-bug', task: 'x', work: 'active' })
-check('fix-bug worker gets its process', workerSection.text({ agent: childAgent }).includes('Process 1-9'))
 saveState(workspace, rootAgent, { ...defaultState(), phase: 'orchestrating', node: 'plan', task: 'work' })
 const rootStatus = await workerHost.tools.gate_status.execute({}, { agent: rootAgent })
 check('main prompt is static; the procedure names the current method', workerSection.text({ agent: rootAgent }) === staticPrompt && rootStatus.procedure?.text.includes('gate-planning') && rootStatus.method.includes('gate-planning'))
 check('procedure reuses already-loaded skills', rootStatus.procedure.text.includes('## 技能加载规则') && rootStatus.procedure.text.includes('直接复用') && rootStatus.procedure.text.includes('不要重复调用') && !rootStatus.procedure.text.includes('再重新加载 gate-planning'))
 check('plan procedure requires rfc for design work', rootStatus.procedure.text.includes('rfc.md') && rootStatus.procedure.text.includes('proposal.md') && rootStatus.procedure.text.includes('设计节'))
 const help = await workerHost.tools.gate_help.execute({}, { agent: rootAgent })
-check('gate_help lists all commands and tools', help.ok === true && help.commands.length === 17 && help.tools.length === 10 && help.commands.some(item => item.command === '/gate-enter-plan') && help.commands.some(item => item.command === '/gate-prd') && help.tools.some(item => item.name === 'gate_artifact_write') && help.tools.some(item => item.name === 'gate_research_dispatch') && help.tools.some(item => item.name === 'gate_init_verify'))
+check('gate_help lists all commands and tools', help.ok === true && help.commands.length === 16 && help.tools.length === 10 && help.commands.some(item => item.command === '/gate-enter-plan') && help.commands.some(item => item.command === '/gate-prd') && help.tools.some(item => item.name === 'gate_artifact_write') && help.tools.some(item => item.name === 'gate_research_dispatch') && help.tools.some(item => item.name === 'gate_init_verify'))
 check('gate_help explains command vs tool', help.text.includes('命令由用户执行') && help.text.includes('工具由模型调用') && help.current?.phase === 'orchestrating' && help.note?.includes('命令由用户执行'))
 const registeredToolNames = JSON.parse(readFileSync(new URL('./registry.snapshot.json', import.meta.url), 'utf8')).tools.map(tool => tool.name)
 check('gate_help tools match registry', help.tools.length === registeredToolNames.length && registeredToolNames.every(name => help.tools.some(tool => tool.name === name)))
 check('gate_help has applicability for every command', help.commands.every(item => typeof item.when === 'string' && item.when.length > 0))
 const unifiedHint = '<具体工作事项或上下文语义>'
-const freeTextCommands = ['/gate-enter-plan', '/gate-enter-implement', '/gate-fix-bug', '/gate-implement-review', '/gate-code-verify', '/gate-propose-review']
+const freeTextCommands = ['/gate-enter-plan', '/gate-enter-implement', '/gate-implement-review', '/gate-code-verify', '/gate-propose-review']
 check('free-text command hints are unified', freeTextCommands.every(name => help.commands.find(item => item.command === name)?.hint === unifiedHint))
 const helpWhen = Object.fromEntries(help.commands.map(item => [item.command, item.when]))
 check('gate_help carries command applicability', helpWhen['/gate-enter-plan'] === 'discuss/complete' && helpWhen['/gate-resume'] === 'blocked' && helpWhen['/gate-return-discuss'] === 'non-blocked')
@@ -1229,10 +1216,6 @@ await rapidHost.commands['gate-docs'].handler({ agent: rapidAgent, rawInput: '',
 await rapidCheck('docs', 'docs', null)
 await rapidHost.tools.gate_record.execute({ node: 'docs' }, { agent: rapidAgent })
 await rapidCheck('docs-done', 'discuss', null)
-await rapidHost.commands['gate-fix-bug'].handler({ agent: rapidAgent, rawInput: 'fix', attachments: [] })
-await rapidCheck('fix-bug', 'orchestrating', 'fix-bug')
-await rapidHost.tools.gate_record.execute({ node: 'fix-bug', workerSessionIds: ['worker-test'] }, { agent: rapidAgent })
-await rapidCheck('fix-done', 'discuss', null)
 await rapidHost.commands['gate-enter-implement'].handler({ agent: rapidAgent, rawInput: 'direct', attachments: [] })
 await rapidCheck('direct-implement', 'orchestrating', 'implement')
 check('rapid switches keep static prompt and current procedure', rapidChecks.every(([, stable, phase, node]) => stable && phase && node), JSON.stringify(rapidChecks))

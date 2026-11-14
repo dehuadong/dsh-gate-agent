@@ -63,21 +63,6 @@ Verify PASS 后进入 note-lifecycle，不得直接 complete。
 主 agent 调 gate_note_finalize，再调 gate_note_verify；通过后 gate_record({node:'note-lifecycle'})。
 mechanical 工作项自动跳过；跨会话 journal 只报告不恢复；archived manifest 只由用户执行 /gate-note-seal。note-lifecycle 完成后建议提交本次实现与 Note；gate 不自动执行 git add/commit。`
 
-export const FIX_BUG_ORCHESTRATION = `## /gate-fix-bug 编排
-主 agent 读取 gate-fix-bug；主 agent 只汇总，不自行修复。
-
-## Step 1 — Fix
-主 agent 首次进入 fix-bug 时读取/加载 gate-fix-bug；已加载则复用，不要重复调用 skill。读取 gate-fix-bug 技能的 assets/worker-briefs/gate-fix-bug.md，派 fix worker。fix worker 使用 gate-fix-bug 执行 Process 1-9：复现、回归覆盖、根因、最小修复、原复现与相关测试。完成后返回修复 receipt；不要自行完成 Step 10-12，也不要提交。
-
-## Step 2 — Independent review
-主 agent 首次进入 review 时加载 gate-code-review；已加载则复用，不要重复调用 skill。提炼两轴评审要求，再读取 gate-fix-bug 技能的 assets/worker-briefs/fix-bug-review.md，派一个独立 review worker；修复基线、选定失败、合同引用和完整 diff 写进简报。review 只报 findings。
-
-## Step 3 — Resolve
-把 material in-scope findings 交回 fix worker（send_message 或新 worker），完成 gate-fix-bug Step 11-12，重跑原复现和相关测试；重复 Step 2-3 直到没有 material findings。
-
-## Step 4 — Record
-完成后调 gate_record({node:'fix-bug', workerSessionIds})，workerSessionIds 包含 fix 与 review worker；gate 不再自动提交。`
-
 export const DOCS_ORCHESTRATION = `## /gate-docs 编排
 范围由模型按项目实际文档需要判断。
 完成后调 gate_record({node:'docs'}) 回到 discuss。`
@@ -89,7 +74,7 @@ finalize/verify 失败留在本节点修复；archived manifest 缺失时提示�
 只有 noteVerified=true 才能 gate_record 完成；mechanical 工作项可跳过 finalize。完成后建议提交本次实现与 Note；gate 不自动 git add/commit。完成后检查本次新 Note 是否完全取代了某篇 implemented Note：有独立参考价值就在最终汇报中给出归档候选和目标命令，没有独立价值则建议删除；不要自动归档。`
 
 
-export const GATE_RECORD_NODES = ['plan', 'plan-review', 'proposal-review', 'plan-revise', 'implement', 'code-review', 'implement-revise', 'verify', 'verify-standalone', 'note-lifecycle', 'docs', 'code-review-standalone', 'fix-bug']
+export const GATE_RECORD_NODES = ['plan', 'plan-review', 'proposal-review', 'plan-revise', 'implement', 'code-review', 'implement-revise', 'verify', 'verify-standalone', 'note-lifecycle', 'docs', 'code-review-standalone']
 
 /** Per-node prompt metadata: protocol variant and the method the root agent loads before dispatch. */
 export const NODE_INFO: Record<string, { variant: string; method: string }> = {
@@ -105,7 +90,6 @@ export const NODE_INFO: Record<string, { variant: string; method: string }> = {
   'verify-standalone': { variant: 'reviewing-verify', method: '无' },
   'note-lifecycle': { variant: 'note-lifecycle', method: '`gate-write-agent-notes`（lifecycle 工具，不是 worker）' },
   docs: { variant: 'docs', method: '无' },
-  'fix-bug': { variant: 'fix-bug', method: '`gate-fix-bug`' },
 }
 
 /** Node-to-method view used by procedures and coverage tests. */
@@ -151,7 +135,6 @@ export const NODE_PROCEDURES: Record<string, string> = {
   'implement-revise': `## Implement revise\n修复 findings；重跑测试；完成后 gate_record({node:'implement-revise'}) 回到 code-review，再按 code-review procedure review。`,
   verify: IMPLEMENT_STEP_3,
   'note-lifecycle': NOTE_LIFECYCLE_ORCHESTRATION,
-  'fix-bug': FIX_BUG_ORCHESTRATION,
   'code-review-standalone': REVIEWING_CODE_PROCEDURE,
   'proposal-review': REVIEWING_PROPOSAL_PROCEDURE,
   'verify-standalone': REVIEWING_VERIFY_PROCEDURE,
@@ -167,7 +150,6 @@ export const METHODOLOGY_KEYS = [
   'orchestrating/implement-revise',
   'orchestrating/verify',
   'orchestrating/note-lifecycle',
-  'orchestrating/fix-bug',
   'docs',
   'reviewing/code-review-standalone',
   'reviewing/proposal-review',
@@ -208,8 +190,6 @@ ${DISCUSS_ORCHESTRATION}
 ## orchestrating/note-lifecycle
 完成 Note 的 finalize 与校验；不写业务代码；检查是否产生归档候选；完成后回 discuss。
 
-## orchestrating/fix-bug
-对已授权的实现缺陷：复现、回归覆盖、根因、最小修复、独立 review；不做新功能、不扩大范围；完成后回 discuss。
 
 ## docs
 文档治理；不改变功能行为；范围由模型按项目实际文档需要判断；完成后回 discuss。
@@ -272,7 +252,7 @@ export function procedureFor(state: GateState, { reviewLimit = DEFAULT_REVIEW_LI
   if (text === '') {
     text = '当前 phase/node 没有匹配的 procedure；调用 gate_status 重新读取；若仍不一致，回 discuss 修复 Gate 状态。'
   }
-  if (['plan', 'implement', 'fix-bug', 'reviewing-code', 'reviewing-proposal', 'reviewing-verify'].includes(variant)) {
+  if (['plan', 'implement', 'reviewing-code', 'reviewing-proposal', 'reviewing-verify'].includes(variant)) {
     text = [text, DISPATCH_RULE].filter(Boolean).join('\n\n')
   }
   if (variant === 'plan' || variant === 'implement') {

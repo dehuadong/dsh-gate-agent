@@ -267,14 +267,6 @@ export function registerRecord(ctx: any, deps: GateDeps) {
           state.noteFinalized = false
           state.noteFinalizeRecovery = []
         }
-      } else if (args.node === 'fix-bug') {
-        state.phase = 'discuss'
-        state.node = null
-        state.work = 'active'
-        state.blockReason = null
-        state.blockedFrom = null
-        state.task = null
-        state.planReady = false
       } else if (args.node === 'note-lifecycle') {
         if (state.noteVerified !== true) {
           return fail({ code: 'note-lifecycle-incomplete', reason: 'note-lifecycle 需要先 gate_note_finalize + gate_note_verify。' })

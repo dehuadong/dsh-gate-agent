@@ -95,19 +95,6 @@ export function registerCommands(ctx: any, deps: GateDeps) {
       wake(invocation, state, ['请按 gate-prd 技能创建或更新 PRD。', '主题/上下文：' + topic, skill].filter(Boolean).join('\n\n'), 'gate-prd')
       return { kind: 'success', text: '已请求 PRD：' + topic }
     })
-    command('gate-fix-bug', async (invocation: any) => {
-      const brief = String(invocation.rawInput ?? '').trim()
-      const gate = resolveGate(ctx, invocation.agent)
-      const state = store.read(gate.root, invocation.agent)
-      if (state.phase !== 'discuss' && state.phase !== 'complete') return { kind: 'error', text: `当前 phase 是 ${state.phase}` }
-      if (state.work === 'blocked' || state.blockReason !== null) return { kind: 'error', text: `当前被 blocked：${state.blockReason ?? 'unknown'}；先 /gate-resume` }
-      const scope = brief === '' ? (state.task ?? '当前上下文中的缺陷') : brief
-      state.phase = 'orchestrating'; state.node = 'fix-bug'; state.task = scope
-      state.work = 'active'; state.blockReason = null; state.blockedFrom = null
-      store.write(gate.root, invocation.agent, state)
-      wake(invocation, state, `Gate 已进入 fix-bug：${scope}。`, 'gate-fix-bug')
-      return { kind: 'success', text: `进入 fix-bug：${scope}` }
-    })
     command('gate-docs', async (invocation: any) => {
       const scope = String(invocation.rawInput ?? '').trim() || '文档治理'
       const gate = resolveGate(ctx, invocation.agent)
