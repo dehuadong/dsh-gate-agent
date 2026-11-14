@@ -109,8 +109,8 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 | 命令 | 参数 | 作用 |
 |---|---|---|
 | `/gate-init` | 无 | 初始化 notes、AGENTS.md、`verify-notes`、CI、git 与基础 `.gitignore`，保持 `discuss` |
-| `/gate-enter-plan [具体工作事项或上下文语义]` | 可选 | 基于讨论共识、既有决策与用户输入进入 `orchestrating/plan` |
-| `/gate-enter-implement [具体工作事项或上下文语义]` | 可选 | 基于已确认计划或讨论后的实施说明进入 `orchestrating/implement` |
+| `/gate-enter-plan [具体工作事项或上下文语义]` | 可选 | 进入 plan：planning worker 写/改 Note → plan-review 三轴；findings 进 plan-revise 修订，通过后回 discuss |
+| `/gate-enter-implement [具体工作事项或上下文语义]` | 可选 | 进入 implement：implement worker 实施 → code-review；findings 进 implement-revise，修完再 review；通过进 verify；PASS 后 note-lifecycle 或 mechanical 回 discuss |
 | `/gate-prd [主题或上下文语义]` | 可选 | 用户级创建/更新 PRD；仅 discuss |
 | `/gate-docs [文档范围或上下文语义]` | 可选 | 进入文档治理，按项目文档规范处理 |
 | `/gate-implement-review [具体工作事项或上下文语义]` | 可选 | 对当前改动做独立只读 code review，只输出 findings |
@@ -125,6 +125,8 @@ Host 插件：用 phase/node 门禁组织讨论、规划、实施、评审、验
 | `/gate-resume` | 无 | 解冻 blocked，回到 block 前的节点；轮次耗尽回 discuss |
 | `/gate-return-discuss` | 无 | 放弃当前节点，回到 discuss |
 | `/gate-status` | 无 | 只读显示当前 phase/node、procedure、access 与下一步命令 |
+
+`orchestrating/plan` / `orchestrating/implement` 是状态名；进入后的动作见“作用”列。
 
 直接 implement（`/gate-enter-implement [具体工作事项或上下文语义]` 或 `gate_start_phase({node:'implement',brief})`）会自动标记 `mechanical`，跳过 Note lifecycle；不需要 `mechanical:` 前缀。plan/plan-revise 手动选择 `mechanical` 时也不要求前缀，只需 `notePaths: []`。
 
